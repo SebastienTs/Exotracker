@@ -8,9 +8,9 @@ Installation
 2) Unzip Exotracker.zip to an empty folder
 3) Copy requirements.txt to your USER_HOME (e.g. C:/Users/sebas in Windows)
 4) Launch Anaconda Prompt and type:
-	> conda create -n exotracker python=3.9
-	> conda activate exotracker
-	> pip install -r requirements.txt
+	* conda create -n exotracker python=3.9
+	* conda activate exotracker
+	* pip install -r requirements.txt
 5) Edit the batch script exotracker.bat in a file editor and update the path to your USER_HOME
    
 Notes:
