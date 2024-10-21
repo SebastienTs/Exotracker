@@ -23,5 +23,6 @@ Usage (Windows)
 
 Double click exotracker.bat batch script, you can also create a shortcut to this file for convenience.
 
-<ins>Note</ins>: the time-lapses are assumed to be preprocessed by the ImageJ macro Yeast_Mosaicer.ijm provided, which besides montaging cell clusters from a set of time-lpases includes some preprocessing (slight 2D+T Gaussian blur and bleach correction).
+<ins>Note</ins>: the time-lapses are assumed to be preprocessed by the ImageJ macro Yeast_Mosaicer.ijm that is provided.
+This macro montages cell clusters from a set of time-lapses and it applies a slight 2D+T Gaussian blur and bleach correction as preprocessing steps.
 
