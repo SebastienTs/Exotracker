@@ -5,7 +5,7 @@ Installation
 ------------
 
 1) Install latest miniconda: https://docs.anaconda.com/miniconda/miniconda-install/ (use default path)
-2) Unzip Exotracker.zip to an empty folder
+2) Clone the repository or download it as a zip file and uzip it to an empty folder
 3) Copy requirements.txt to your USER_HOME (e.g. C:/Users/sebas in Windows)
 4) Launch Anaconda Prompt and type:
 	* conda create -n exotracker python=3.9
