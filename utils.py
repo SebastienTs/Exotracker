@@ -15,6 +15,7 @@ from scipy.signal import medfilt
 
 #### Utility functions
 
+# Return z,y,x coordinates of the inner points of an origin centered disk
 def disk_pts(rad):
 
   pts, ptsq = [], [[], [], [], []]
@@ -28,12 +29,14 @@ def disk_pts(rad):
   return pts, ptsq
 
 
+# Compute min/mean/max image intensity within disks centered on input points
 def disk_int_stats(img, pts, rad):
 
   rad = np.round(rad).astype(int)
   pts = np.round(pts).astype(int)
   offsets, offsetsq = disk_pts(rad)
-  min_int,  mean_int, max_int = np.full(len(pts), np.NaN), np.full(len(pts), np.NaN), np.full(len(pts), np.NaN)
+  min_int,  mean_int, max_int = (np.full(len(pts), np.NaN), np.full(len(pts), np.NaN),
+                                 np.full(len(pts), np.NaN))
   for i, pt in enumerate(pts):
     if (pt[1] >= rad) and (pt[2] >= rad) and (pt[1] < img.shape[1]-rad) and (pt[2] < img.shape[2]-rad):
         coords = np.round(np.array(pt)+np.array(offsets)).astype(int)
@@ -44,18 +47,20 @@ def disk_int_stats(img, pts, rad):
   return {'min': min_int, 'mean': mean_int, 'max': max_int, 'area': len(offsets)}
 
 
-def intensity_moments(image):
+# Compute the intensity moments of an image
+def intensity_moments(img):
 
-    y, x = np.indices(image.shape)
-    m00 = np.sum(image)
-    m10, m01 = np.sum(x*image), np.sum(y*image)
-    m20, m02, m11 = np.sum(x**2*image), np.sum(y**2*image), np.sum(x*y*image)
+    y, x = np.indices(img.shape)
+    m00 = np.sum(img)
+    m10, m01 = np.sum(x*img), np.sum(y*img)
+    m20, m02, m11 = np.sum(x**2*img), np.sum(y**2*img), np.sum(x*y*img)
     x_c, y_c = m10/m00, m01/m00
     mu20, mu02,mu11 = m20/m00-x_c**2, m02/m00-y_c**2, m11/m00-x_c*y_c
 
     return mu20, mu02, mu11
 
 
+# Report intensity statistics of particles centered on input points (segmentationless)
 def particle_analysis(img, pts, rad):
 
     rad = np.round(rad).astype(int)
@@ -63,16 +68,15 @@ def particle_analysis(img, pts, rad):
     density, eccent, ratio, theta = (np.full(len(pts), np.NaN), np.full(len(pts), np.NaN),
                                      np.full(len(pts), np.NaN) , np.full(len(pts), np.NaN))
     for i, pt in enumerate(pts):
-        img_crop = img[pt[0], pt[1]-rad:pt[1]+rad, pt[2]-rad:pt[2]+rad].astype(float)
-        img_crop = img_crop.astype(float)
-        mu20, mu02, mu11 = intensity_moments(img_crop)
+        crop = img[pt[0], pt[1]-rad:pt[1]+rad, pt[2]-rad:pt[2]+rad].astype(float)
+        mu20, mu02, mu11 = intensity_moments(crop)
         theta[i] = 0.5 * np.arctan2(2*mu11, mu20-mu02)
         major = np.sqrt(2*(mu20+mu02+np.sqrt(4*mu11**2+(mu20-mu02)**2)))
         minor = np.sqrt(2*(mu20+mu02-np.sqrt(4*mu11**2+(mu20-mu02)**2)))
         ratio[i] = minor/major
         eccent[i] = np.sqrt(1-(minor/major)**2)
-        density[i] = np.clip(1-(img_crop[:1,:].mean()+img_crop[-1:,:].mean()+img_crop[:,:1].mean()+img_crop[:,-1:].mean()+1e-9)
-                          /(4*img_crop[2:-2, 2:-2].mean()), 0, 1)
+        density[i] = np.clip(1-(crop[:1,:].mean()+crop[-1:,:].mean()+crop[:,:1].mean()+crop[:,-1:].mean()+1e-9)
+                          /(4*crop[2:-2, 2:-2].mean()), 0, 1)
         if ratio[i] > 0.975:
           theta[i] = np.nan
 
@@ -80,6 +84,7 @@ def particle_analysis(img, pts, rad):
             'ratio': np.round(ratio, decimals=2), 'theta': np.round(theta, decimals=2)}
 
 
+# Fill gaps within a dataframe track
 def interpolate_track(group):
 
     frames = pd.RangeIndex(group['frame'].min(), group['frame'].max() + 1)
@@ -90,6 +95,16 @@ def interpolate_track(group):
     return group_interp
 
 
+# Add extra frames to a track data frame (same position as last frame)
+def extend_dataframe_frames(df, nrows):
+
+    for j in range(nrows):
+        df = pd.concat([df, pd.DataFrame(df.iloc[-1]).T], ignore_index=True)
+        df.loc[df.index[-1], 'frame'] += 1
+    return df
+
+
+# Flag points which closest nieghbor is below a distance threshold
 def flag_close_points(pts, min_dst):
 
   dsts = np.sqrt(np.sum((pts[:, np.newaxis, :] - pts[np.newaxis, :, :]) ** 2, axis=-1))
@@ -99,13 +114,7 @@ def flag_close_points(pts, min_dst):
   return dst_flags
 
 
-def extend_dataframe_frames(df, nrows):
-
-    for j in range(nrows):
-        df = pd.concat([df, pd.DataFrame(df.iloc[-1]).T], ignore_index=True)
-        df.loc[df.index[-1], 'frame'] += 1
-    return df
-
+# Add a subkey to an entry of a dictionary
 def acc_dict(dct, key, subkey, value):
 
     if key not in dct:
@@ -114,13 +123,14 @@ def acc_dict(dct, key, subkey, value):
     return dct
 
 
+# Find the position and length of the longest non zero sequence in a 1D array
 def longest_non_zero_sequence(seq):
-    start, end = max(((i, i + len(s)) for i, s in enumerate(''.join(map(str, seq)).split('0')) if s),
+    st, en = max(((i, i + len(s)) for i, s in enumerate(''.join(map(str, seq)).split('0')) if s),
                      key=lambda x: x[1] - x[0], default=(0, 0))
-    lgth = end - start
-    return start, end, lgth
+    return st, en, en - st
 
 
+# Find high level plateau in an intensity profile
 def estimate_track_lgth(int_profile, medrad1, medrad2, thr):
 
     vals = np.array(int_profile)
@@ -130,10 +140,11 @@ def estimate_track_lgth(int_profile, medrad1, medrad2, thr):
     trackflag = medfilt(trackflag, kernel_size=medrad2)
     start, end , lgth = longest_non_zero_sequence(trackflag)
 
-    return start, end, lgth
+    return int(start), int(end), int(lgth)
 
 #### Napari widgets / dialog boxes
 
+# Image loader widget
 @magicgui(call_button='Load Images',
           imagepath={'widget_type': 'FileEdit', 'label': 'Chan1'},
           imagepath2={'widget_type': 'FileEdit', 'label': 'Chan2'},
@@ -158,9 +169,11 @@ def load_image_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, start_f
         vw.layers['Channel1'].data = img
     else:
         vw.add_image(img, name='Channel1')
+
     print(f'Loaded image {imagepath} ({img.shape})')
 
     return None
+
 
 # Display message dialog box
 def dialogboxmes(message, title):
@@ -168,7 +181,8 @@ def dialogboxmes(message, title):
 
 #### Napari layers utilities
 
-# Return True if a viewer layer with layrname is found
+
+# Check existence of a viewer layer with specific name
 def viewer_is_layer(vw: Viewer, layername):
 
     found = False
@@ -178,6 +192,7 @@ def viewer_is_layer(vw: Viewer, layername):
 
     return found
 
+
 # Close all viewer layers with layername in name
 def viewer_close_layer(vw: Viewer, layername):
 
@@ -186,8 +201,10 @@ def viewer_close_layer(vw: Viewer, layername):
             if str(ly) == layername:
                 vw.layers.pop(i)
 
+
 ## Spotiflow
 
+# Add a spotiflow widget
 @magicgui(call_button='Detect')
 def detect_spots_spotiflow(vw: Viewer) -> LayerDataTuple:
 

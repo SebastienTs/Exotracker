@@ -1,4 +1,5 @@
 from napari.types import ImageData, PointsData, LayerDataTuple
+from pathlib import Path
 from napari import Viewer
 from magicgui import magicgui
 from magicgui.tqdm import trange
@@ -28,16 +29,20 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
         # Detect blobs frame by frame
         blb_lst, blb_scales, blb_cnt = [], [], 0
         for t in trange(img.shape[0]):
+
           # Blobs detection
           blobs = dog(img[t, :, :], min_sigma=spot_rad/2, max_sigma=2*np.ceil(spot_rad), sigma_ratio=1.6, threshold=detect_thr*1e-3)
           blb_cnt += len(blobs)
+
           # Add time frame info and compute blobs local intensity
           coords = np.c_[(t*np.ones(blobs.shape[0]), blobs[:,:-1])]
           stats = disk_int_stats(img,  coords, 3*spot_rad)
+
           # Keep only valid blobs (right scale + no 0 intensity around) and split coordinates / scales
           blb_coords_scales_kept = [(coords[i, :], blob[-1]) for i, blob in enumerate(blobs)
                       if blob[-1] <= spot_rad and stats['min'][i] >= 1]
           blb_kept_coords, blb_kept_scales = zip(*blb_coords_scales_kept)
+
           # Accumulate blobs and scales to lists
           blb_lst = blb_lst + list(blb_kept_coords)
           blb_scales = blb_scales + list(blb_kept_scales)
@@ -105,9 +110,10 @@ def track_spots_pytrack(vw: Viewer, search_range=2, max_mean_speed=0.5, max_scal
           min_neighbor_dist={'widget_type': 'IntSlider', 'max': 25},
           min_contrast={'widget_type': 'FloatSlider', 'max': 1},
           chan2_ext={'widget_type': 'IntSlider', 'max': 25},
-          chan2_delta={'widget_type': 'FloatSlider', 'max': 1})
+          chan2_delta={'widget_type': 'FloatSlider', 'max': 1},
+          chan2_delta2={'widget_type': 'FloatSlider', 'max': 1})
 def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neighbor_dist=4, min_contrast=0.29,
-                   chan2_ext=25, chan2_delta=0.07) -> LayerDataTuple:
+                   chan2_ext=25, chan2_delta=0.08, chan2_delta2=0.4) -> LayerDataTuple:
 
   if viewer_is_layer(vw, 'Tracks') and viewer_is_layer(vw, 'Blobs'):
 
@@ -132,6 +138,7 @@ def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neigh
       for i, df in trajectories.groupby('particle', as_index=False):
 
           # Temporal information
+          lgth = len(df)
           first_frame = df['frame'].iloc[0]
           last_frame = df['frame'].iloc[-1]
 
@@ -141,37 +148,35 @@ def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neigh
           outer = (diskout['mean']*diskout['area']-diskin['mean']*diskin['area'])/(diskout['area']-diskin['area'])
           contrast = (diskin['mean'].mean()/outer.mean())-1
 
-          if ((first_frame >= min_start_frame and last_frame <= (img.shape[0]-min_preend_frame)) and
-                  dst_flags[cnt_tracks] and contrast >= min_contrast):
+          if ((first_frame >= min_start_frame and last_frame <= (img.shape[0]-min_preend_frame))
+                  and dst_flags[cnt_tracks] and contrast >= min_contrast):
+
               tracks_kept = pd.concat([tracks_kept, df])
 
               # Store channel 1 intensity profile
               tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch1_int', list(np.round(diskin['mean'], decimals=1)))
+              tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'track', df)
+              tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'length', lgth)
               cnt_kept += 1
 
           cnt_tracks += 1
       tracks_kept = tracks_kept.reset_index(drop=True)
 
-      # Chan2 intensity statistics
+      # Channel 2 intensity statistics and track detection
       cnt_coloc = 0
       if str(load_image_tiff.imagepath2.value).endswith('.tif'):
 
-          # Retrieve channel 2 image
+          # Retrieve channel 2 images
           img2 = vw.layers['Channel2'].data
-
-          # Pre-subtract first frame
           img2_corr = vw.layers['Channel2_proc'].data
 
           # Classify tracks based on Channel 2 intensity profile
+          tracks_chan2_props = dict()
           colors = np.zeros(0, dtype=int)
           for i, df in tracks_kept.groupby('particle', as_index=False):
 
-            # Store track info
+            # Extend track to analyze it past Channel 1 track
             lgth = len(df)
-            tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'track', df)
-            tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'length', lgth)
-
-            # Extend track
             df = df.reset_index(drop=True)
             if df['frame'][lgth-1]<img2.shape[0]-chan2_ext:
                 df = extend_dataframe_frames(df, chan2_ext)
@@ -182,18 +187,19 @@ def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neigh
             diskin = disk_int_stats(img2_corr, np.column_stack((df['frame'], df['y'], df['x'])), 1)
             tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch2_int_corr', list(np.round(diskin['mean'], decimals=1)))
 
-            # Analyze region for particle
-            #part_props = particle_analysis(img2_corr, np.column_stack((df['frame'], df['y'], df['x'])), 4)
-            #tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'density', part_props['density'])
-
             # Classify channel 2 positive tracks
             delta = (diskin['mean'].max()-diskin['mean'][0:5].mean()) / diskin['mean'][0:5].mean()
             tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch2_positive', delta >= chan2_delta)
 
-            # Assign channel 2 positive color to Blobs
+            # Assign channel 2 positive color to blobs
             if delta >= chan2_delta:
+                # Estimate channel 2 track
+                start, end, trcklgth = estimate_track_lgth(tracks_kept_props[int(df['particle'].iloc[0])]['ch2_int_corr'], 15, 9, chan2_delta2)
+                tracks_chan2_props[int(df['particle'].iloc[0])] = [start, end, trcklgth]
+                #colors = np.concatenate((colors, np.ones(lgth))
+                colors = np.concatenate((colors, np.zeros(start)))
+                colors = np.concatenate((colors, np.ones(lgth-start)))
                 cnt_coloc += 1
-                colors = np.concatenate((colors, np.ones(lgth)))
             else:
                 colors = np.concatenate((colors, np.zeros(lgth)))
 
@@ -203,13 +209,6 @@ def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neigh
 
           border_colors = 'yellow'
 
-      # Estimate channel 2 tracks
-      tracks_chan2_props = dict()
-      for key, value in list(tracks_kept_props.items())[:]:
-          if tracks_kept_props[key]['ch2_positive'] == 1:
-              start, end, lgth = estimate_track_lgth(tracks_kept_props[key]['ch2_int_corr'], 25, 9, 0.4)
-              tracks_chan2_props[key] = [start, end, lgth]
-
       # Display results summary
       analyze_tracks.call_button.text = f'Filter Tracks ({cnt_coloc}/{cnt_kept}/{cnt_tracks})'
 
@@ -218,10 +217,11 @@ def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neigh
       vw.layers['Tracks'].visible = False
 
       # Export results
-      with open('D:/tracks_chan1_props.pkl', 'wb') as file:
+      with open(Path(load_image_tiff.imagepath.value).with_suffix('.pkl'), 'wb') as file:
           pickle.dump(tracks_kept_props, file)
-      with open('D:/tracks_chan2_props.pkl', 'wb') as file:
-          pickle.dump(tracks_chan2_props, file)
+      if str(load_image_tiff.imagepath2.value).endswith('.tif'):
+        with open(Path(load_image_tiff.imagepath2.value).with_suffix('.pkl'), 'wb') as file:
+            pickle.dump(tracks_chan2_props, file)
 
       return ([row[1:] for row in tracks_kept.values], {'name': 'ValidBlobs', 'size': int(np.round(5*spot_rad)),
                                                         'border_color': border_colors, 'face_color': 'transparent'},

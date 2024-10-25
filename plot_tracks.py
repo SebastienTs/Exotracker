@@ -15,13 +15,12 @@ def tile_windows():
 
 
 def longest_non_zero_sequence(seq):
-    start, end = max(((i, i + len(s)) for i, s in enumerate(''.join(map(str, seq)).split('0')) if s),
+    st, en = max(((i, i + len(s)) for i, s in enumerate(''.join(map(str, seq)).split('0')) if s),
                      key=lambda x: x[1] - x[0], default=(0, 0))
-    lgth = end - start
-    return start, end, lgth
+    return st, en, en - st
 
 
-with open('D:/tracks_chan1_props.pkl', 'rb') as file:
+with open('D:/Projects/UPF/Widefield_TIRF/_TestImages/Test_5x5_pre_C1.pkl', 'rb') as file:
     tracks_kept_props = pickle.load(file)
 
 cnt = 1
@@ -29,7 +28,7 @@ plt.figure()
 for key, value in list(tracks_kept_props.items())[:]:
     if tracks_kept_props[key]['ch2_positive'] == 1:
         vals = np.array(tracks_kept_props[key]['ch2_int_corr'])
-        vals_flt = medfilt(vals, kernel_size=25)
+        vals_flt = medfilt(vals, kernel_size=15)
         vals_flt = (vals_flt - vals_flt.min()) / (vals_flt.max() - vals_flt.min())
         trackflag = (vals_flt >= 0.4).astype(int)
         trackflag = medfilt(trackflag, kernel_size=9)
