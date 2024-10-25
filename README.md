@@ -23,5 +23,5 @@ Usage (Windows)
 
 Double click exotracker.bat batch script, you can also create a shortcut to this file for convenience.
 
-<ins>Note</ins>: the time-lapses should be pre-processed by slight 2D+T Gaussian blur and bleach correction. 
+<ins>Note</ins>: The time-lapses should be pre-processed by slight 2D+T Gaussian blur and bleach correction.<br />
 This can be performed with the ImageJ macro Yeast_Mosaicer.ijm provided which additionally montages all cell clusters from a set of time-lapses to a mosaic.
