@@ -145,18 +145,19 @@ def estimate_track_lgth(int_profile, medrad1, medrad2, thr):
 #### Napari widgets / dialog boxes
 
 # Image loader widget
-@magicgui(call_button='Load Images',
+@magicgui(call_button='Load',
           imagepath={'widget_type': 'FileEdit', 'label': 'Chan1'},
           imagepath2={'widget_type': 'FileEdit', 'label': 'Chan2'},
           start_frame={'widget_type': 'IntSlider', 'max': 999},
           end_frame={'widget_type': 'IntSlider', 'max': 999})
 def load_image_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, start_frame=start_frame, end_frame=end_frame):
 
-    img = imread(imagepath, key=range(start_frame, end_frame))
+    img = imread(imagepath, key=range(start_frame, end_frame)).astype(np.uint16)
 
     if str(imagepath2).endswith('.tif'):
-        img2 = imread(imagepath2, key=range(start_frame, end_frame))
-        img2_proc = (img2 + img2[0, :, :].max() + 1) - gaussian(img2[0, :, :], sigma=5.0, preserve_range = True)
+        img2 = imread(imagepath2, key=range(start_frame, end_frame)).astype(np.uint16)
+        img2_proc = ((img2 + img2[0, :, :].max() + 1)
+                     - gaussian(img2[0, :, :], sigma=5, preserve_range=True)).astype(np.uint16)
         if viewer_is_layer(vw, 'Channel2'):
             vw.layers['Channel2'].data = img2
             vw.layers['Channel2_proc'].data = img2_proc
@@ -204,7 +205,7 @@ def viewer_close_layer(vw: Viewer, layername):
 
 ## Spotiflow
 
-# Add a spotiflow widget
+# Spotiflow widget
 @magicgui(call_button='Detect')
 def detect_spots_spotiflow(vw: Viewer) -> LayerDataTuple:
 

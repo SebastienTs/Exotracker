@@ -16,7 +16,7 @@ from utils import *
 
 ## 1) Multi-scale Difference of Gaussian based (Skimage)
 
-@magicgui(call_button='Detect Spots',
+@magicgui(call_button='Detect',
           spot_rad={'widget_type': 'FloatSlider', 'min': 1, 'max': 3},
           detect_thr={'widget_type': 'FloatSlider', 'min': 0.1, 'max': 0.5})
 def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple:
@@ -104,16 +104,16 @@ def track_spots_pytrack(vw: Viewer, search_range=2, max_mean_speed=0.5, max_scal
 
 #### Track Analysis
 
-@magicgui(call_button='Analyze Tracks',
+@magicgui(call_button='Analyze',
           min_start_frame={'widget_type': 'IntSlider', 'max': 25},
           min_preend_frame={'widget_type': 'IntSlider', 'max': 25},
           min_neighbor_dist={'widget_type': 'IntSlider', 'max': 25},
           min_contrast={'widget_type': 'FloatSlider', 'max': 1},
-          chan2_ext={'widget_type': 'IntSlider', 'max': 25},
+          chan2_add_frame={'widget_type': 'IntSlider', 'max': 25},
           chan2_delta={'widget_type': 'FloatSlider', 'max': 1},
-          chan2_delta2={'widget_type': 'FloatSlider', 'max': 1})
+          chan2_fraction={'widget_type': 'FloatSlider', 'max': 1})
 def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neighbor_dist=4, min_contrast=0.29,
-                   chan2_ext=25, chan2_delta=0.08, chan2_delta2=0.4) -> LayerDataTuple:
+                   chan2_add_frame=25, chan2_delta=0.08, chan2_fraction=0.4) -> LayerDataTuple:
 
   if viewer_is_layer(vw, 'Tracks') and viewer_is_layer(vw, 'Blobs'):
 
@@ -178,8 +178,8 @@ def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neigh
             # Extend track to analyze it past Channel 1 track
             lgth = len(df)
             df = df.reset_index(drop=True)
-            if df['frame'][lgth-1]<img2.shape[0]-chan2_ext:
-                df = extend_dataframe_frames(df, chan2_ext)
+            if df['frame'][lgth-1]<img2.shape[0]-chan2_add_frame:
+                df = extend_dataframe_frames(df, chan2_add_frame)
 
             # Extract, analyze and store intensity profiles
             diskin = disk_int_stats(img2, np.column_stack((df['frame'], df['y'], df['x'])), 1)
@@ -194,7 +194,7 @@ def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neigh
             # Assign channel 2 positive color to blobs
             if delta >= chan2_delta:
                 # Estimate channel 2 track
-                start, end, trcklgth = estimate_track_lgth(tracks_kept_props[int(df['particle'].iloc[0])]['ch2_int_corr'], 15, 9, chan2_delta2)
+                start, end, trcklgth = estimate_track_lgth(tracks_kept_props[int(df['particle'].iloc[0])]['ch2_int_corr'], 15, 9, chan2_fraction)
                 tracks_chan2_props[int(df['particle'].iloc[0])] = [start, end, trcklgth]
                 #colors = np.concatenate((colors, np.ones(lgth))
                 colors = np.concatenate((colors, np.zeros(start)))
