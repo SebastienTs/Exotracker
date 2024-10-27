@@ -2,7 +2,7 @@
 from magicgui import magicgui
 from napari import Viewer
 from napari.types import LayerDataTuple, PointsData, TracksData
-from settings import filename, filename2, start_frame, end_frame, loadchan2
+from settings import filename, filename2, start_frame, end_frame
 from tifffile import imread
 from skimage.filters import gaussian
 from scipy import ndimage
@@ -67,24 +67,26 @@ def particle_analysis(img, pts, rad):
     pts = np.round(pts).astype(int)
     density, eccent, ratio, theta = (np.full(len(pts), np.NaN), np.full(len(pts), np.NaN),
                                      np.full(len(pts), np.NaN) , np.full(len(pts), np.NaN))
-    for i, pt in enumerate(pts):
-        crop = img[pt[0], pt[1]-rad:pt[1]+rad, pt[2]-rad:pt[2]+rad].astype(float)
-        mu20, mu02, mu11 = intensity_moments(crop)
-        theta[i] = 0.5 * np.arctan2(2*mu11, mu20-mu02)
-        major = np.sqrt(2*(mu20+mu02+np.sqrt(4*mu11**2+(mu20-mu02)**2)))
-        minor = np.sqrt(2*(mu20+mu02-np.sqrt(4*mu11**2+(mu20-mu02)**2)))
-        ratio[i] = minor/major
-        eccent[i] = np.sqrt(1-(minor/major)**2)
-        density[i] = np.clip(1-(crop[:1,:].mean()+crop[-1:,:].mean()+crop[:,:1].mean()+crop[:,-1:].mean()+1e-9)
-                          /(4*crop[2:-2, 2:-2].mean()), 0, 1)
-        if ratio[i] > 0.975:
-          theta[i] = np.nan
+    if rad >= 4:
+        for i, pt in enumerate(pts):
+            crop = img[pt[0], pt[1]-rad:pt[1]+rad, pt[2]-rad:pt[2]+rad].astype(float)
+            mu20, mu02, mu11 = intensity_moments(crop)
+            major = np.sqrt(2*(mu20+mu02+np.sqrt(4*mu11**2+(mu20-mu02)**2)))
+            minor = np.sqrt(2*(mu20+mu02-np.sqrt(4*mu11**2+(mu20-mu02)**2)))
+            ratio[i] = minor/major
+            eccent[i] = np.sqrt(1-(minor/major)**2)
+            density[i] = np.clip(1-(crop[:1,:].mean()+crop[-1:,:].mean()+crop[:,:1].mean()+crop[:,-1:].mean()+1e-9)
+                              /(4*crop[2:-2, 2:-2].mean()), 0, 1)
+            if ratio[i] > 0.95:
+              theta[i] = np.nan
+            else:
+              theta[i] = 0.5 * np.arctan2(2 * mu11, mu20 - mu02)
 
     return {'density': np.round(density, decimals=2), 'eccent': np.round(eccent, decimals=2),
             'ratio': np.round(ratio, decimals=2), 'theta': np.round(theta, decimals=2)}
 
 
-# Fill gaps within a dataframe track
+# Fill gaps from a dataframe track
 def interpolate_track(group):
 
     frames = pd.RangeIndex(group['frame'].min(), group['frame'].max() + 1)
@@ -95,7 +97,7 @@ def interpolate_track(group):
     return group_interp
 
 
-# Add extra frames to a track data frame (same position as last frame)
+# Add extra frames to a dataframe track (same position as last frame)
 def extend_dataframe_frames(df, nrows):
 
     for j in range(nrows):
@@ -130,7 +132,7 @@ def longest_non_zero_sequence(seq):
     return st, en, en - st
 
 
-# Find high level plateau in an intensity profile
+# Find longest high level plateau in an intensity profile
 def estimate_track_lgth(int_profile, medrad1, medrad2, thr):
 
     vals = np.array(int_profile)
@@ -183,7 +185,7 @@ def dialogboxmes(message, title):
 #### Napari layers utilities
 
 
-# Check existence of a viewer layer with specific name
+# Check if viewer layer with specific name exists
 def viewer_is_layer(vw: Viewer, layername):
 
     found = False
@@ -194,7 +196,7 @@ def viewer_is_layer(vw: Viewer, layername):
     return found
 
 
-# Close all viewer layers with layername in name
+# Close all viewer layers holding the string layername in their name
 def viewer_close_layer(vw: Viewer, layername):
 
     if len(vw.layers) > 0:

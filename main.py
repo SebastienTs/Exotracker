@@ -1,12 +1,10 @@
-from typing import Tuple
 import napari
 from algos import *
 from utils import *
-import numpy as np
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-# Algo configuration
+# Workflow configuration
 image_loader = load_image_tiff
 detect_spots = detect_spots_msdog
 track_spots = track_spots_pytrack

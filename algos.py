@@ -63,12 +63,13 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
 
 @magicgui(call_button='Track',
           search_range={'widget_type': 'IntSlider', 'min': 1, 'max': 5},
-          max_mean_speed={'widget_type': 'FloatSlider', 'max': 2},
+          max_mean_speed={'widget_type': 'FloatSlider', 'max': 3},
+          min_max_speed={'widget_type': 'FloatSlider', 'max': 3},
           max_scale={'widget_type': 'FloatSlider', 'min': 1, 'max': 3},
           max_gaps={'widget_type': 'IntSlider', 'max': 25},
           min_duration={'widget_type': 'IntSlider', 'min': 5, 'max': 50})
-def track_spots_pytrack(vw: Viewer, search_range=2, max_mean_speed=0.5, max_scale = 1.33,
-                        max_gaps=15, min_duration=35) -> LayerDataTuple:
+def track_spots_pytrack(vw: Viewer, search_range=2, max_mean_speed=0.5, min_max_speed=0,
+                        max_scale = 1.33, max_gaps=15, min_duration=35) -> LayerDataTuple:
 
     if viewer_is_layer(vw, 'Blobs'):
 
@@ -86,9 +87,10 @@ def track_spots_pytrack(vw: Viewer, search_range=2, max_mean_speed=0.5, max_scal
         tracks_total, tracks_kept = 0, 0
         for id, df in trajectories.groupby('particle'):
             duration = df['frame'].iloc[-1]-df['frame'].iloc[0]+1
+            mxspeed = np.sqrt(df['x'].diff()**2+df['y'].diff()**2).max()
             length = np.sqrt(df['x'].diff()**2+df['y'].diff()**2).sum()
             scale = df['scale'].mean()
-            if (duration >= min_duration) and (length/duration <= max_mean_speed) and scale <= max_scale:
+            if ((duration >= min_duration) and (length/duration <= max_mean_speed) and (mxspeed>=min_max_speed) and scale <= max_scale):
                 trajectories_flt = pd.concat([trajectories_flt, df]).astype(float)
                 tracks_kept += 1
             tracks_total += 1
