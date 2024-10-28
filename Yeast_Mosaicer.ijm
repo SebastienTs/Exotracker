@@ -14,9 +14,9 @@
 
 // Dialog box
 Dialog.create("Yeast_Mosaicer");
-Dialog.addDirectory("Experiment folder", "D:/Projects/UPF/Widefield_TIRF/30C/3_Preprocessed/");
+Dialog.addDirectory("Experiment folder", "D:/Projects/UPF/TIRF/30C/3_Preprocessed/");
 Dialog.addString("Files root name (_C1)", "OGY1494_Su_Sec9_30_prepro_C1_", 50);
-Dialog.addDirectory("Montages export folder", "D:/Projects/UPF/Widefield_TIRF/30C/5_Montage/");
+Dialog.addDirectory("Montages export folder", "D:/Projects/UPF/TIRF/30C/5_Montage/");
 Dialog.addNumber("Number of files to process", 10);	
 Dialog.addNumber("Crop window size (pixels)", 160);	
 Dialog.addCheckbox("Apply preprocessing", true);
