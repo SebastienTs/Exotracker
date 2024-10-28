@@ -1,16 +1,17 @@
-from napari.types import ImageData, PointsData, LayerDataTuple
-from pathlib import Path
 from napari import Viewer
-from magicgui import magicgui
-from magicgui.tqdm import trange
+from napari.types import ImageData, PointsData, LayerDataTuple
 from napari.layers import Tracks, Points, Layer
+from magicgui.tqdm import trange
+from magicgui import magicgui
 from skimage.feature import blob_dog as dog
-import pickle
-import numpy as np
-import pandas as pd
 import trackpy as tp
+import pandas as pd
+import numpy as np
+from pathlib import Path
+import pickle
 from settings import color_codes
 from utils import *
+tp.quiet()
 
 #### Spot Detectors
 
@@ -43,11 +44,11 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
                       if blob[-1] <= spot_rad and stats['min'][i] >= 1]
           blb_kept_coords, blb_kept_scales = zip(*blb_coords_scales_kept)
 
-          # Accumulate blobs and scales to lists
+          # Accumulate blobs detected in this frame to list
           blb_lst = blb_lst + list(blb_kept_coords)
           blb_scales = blb_scales + list(blb_kept_scales)
 
-        # Display results summery
+        # Display blob count
         detect_spots_msdog.call_button.text = f'Detected Spots ({np.round(len(blb_lst)/img.shape[0])}/frame)'
 
         return ([blob[:3] for blob in blb_lst],
@@ -55,7 +56,7 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
                  'face_color': 'transparent', 'properties': {'scale': blb_scales}}, 'points')
     else:
 
-        dialogboxmes('Error', 'No Channel1 layer!')
+        dialogboxmes('Error', 'Load an image first!')
 
 #### Particle Trackers
 
@@ -63,13 +64,14 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
 
 @magicgui(call_button='Track',
           search_range={'widget_type': 'IntSlider', 'min': 1, 'max': 5},
+          gap_memory={'widget_type': 'IntSlider', 'max': 25},
+          min_duration={'widget_type': 'IntSlider', 'min': 5, 'max': 50},
+          min_length={'widget_type': 'FloatSlider', 'max': 3},
           max_mean_speed={'widget_type': 'FloatSlider', 'max': 3},
-          min_max_speed={'widget_type': 'FloatSlider', 'max': 3},
-          max_scale={'widget_type': 'FloatSlider', 'min': 1, 'max': 3},
-          max_gaps={'widget_type': 'IntSlider', 'max': 25},
-          min_duration={'widget_type': 'IntSlider', 'min': 5, 'max': 50})
-def track_spots_pytrack(vw: Viewer, search_range=2, max_mean_speed=0.5, min_max_speed=0,
-                        max_scale = 1.33, max_gaps=15, min_duration=35) -> LayerDataTuple:
+          max_scale={'widget_type': 'FloatSlider', 'min': 1, 'max': 2.5},
+          )
+def track_spots_pytrack(vw: Viewer, search_range=2, gap_memory=15, min_duration=35, min_length=0, max_mean_speed=0.5,
+                        max_scale = 1.33, ) -> LayerDataTuple:
 
     if viewer_is_layer(vw, 'Blobs'):
 
@@ -79,18 +81,16 @@ def track_spots_pytrack(vw: Viewer, search_range=2, max_mean_speed=0.5, min_max_
 
         # Convert point info to dataframe and track blobs
         df = pd.DataFrame(np.column_stack((pts, scales)), columns=['frame', 'y', 'x', 'scale'])
-        tp.quiet()
-        trajectories = tp.link_df(df, search_range=search_range, memory=max_gaps).sort_values(by=['particle', 'frame'])
+        trajectories = tp.link_df(df, search_range=search_range, memory=gap_memory).sort_values(by=['particle', 'frame'])
 
         # Remove spurious and abnormal blob size / speed tracks
         trajectories_flt = pd.DataFrame(columns=trajectories.columns)
         tracks_total, tracks_kept = 0, 0
         for id, df in trajectories.groupby('particle'):
             duration = df['frame'].iloc[-1]-df['frame'].iloc[0]+1
-            mxspeed = np.sqrt(df['x'].diff()**2+df['y'].diff()**2).max()
             length = np.sqrt(df['x'].diff()**2+df['y'].diff()**2).sum()
             scale = df['scale'].mean()
-            if ((duration >= min_duration) and (length/duration <= max_mean_speed) and (mxspeed>=min_max_speed) and scale <= max_scale):
+            if (duration >= min_duration and length/duration <= max_mean_speed and length >= min_length and scale <= max_scale):
                 trajectories_flt = pd.concat([trajectories_flt, df]).astype(float)
                 tracks_kept += 1
             tracks_total += 1
@@ -102,7 +102,7 @@ def track_spots_pytrack(vw: Viewer, search_range=2, max_mean_speed=0.5, min_max_
                 {'name': 'Tracks', 'head_length': 0, 'tail_length': 999, 'tail_width': 3}, 'tracks')
 
     else:
-        dialogboxmes('Error', 'No Blobs layer!')
+        dialogboxmes('Error', 'Detect blobs first!')
 
 #### Track Analysis
 
@@ -111,11 +111,10 @@ def track_spots_pytrack(vw: Viewer, search_range=2, max_mean_speed=0.5, min_max_
           min_preend_frame={'widget_type': 'IntSlider', 'max': 25},
           min_neighbor_dist={'widget_type': 'IntSlider', 'max': 25},
           min_contrast={'widget_type': 'FloatSlider', 'max': 1},
-          chan2_add_frame={'widget_type': 'IntSlider', 'max': 25},
           chan2_delta={'widget_type': 'FloatSlider', 'max': 1},
           chan2_fraction={'widget_type': 'FloatSlider', 'max': 1})
-def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neighbor_dist=4, min_contrast=0.29,
-                   chan2_add_frame=25, chan2_delta=0.08, chan2_fraction=0.4) -> LayerDataTuple:
+def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neighbor_dist=4, min_contrast=0.28,
+                   chan2_delta=0.08, chan2_fraction=0.4) -> LayerDataTuple:
 
   if viewer_is_layer(vw, 'Tracks') and viewer_is_layer(vw, 'Blobs'):
 
@@ -149,6 +148,8 @@ def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neigh
           diskout = disk_int_stats(img, np.column_stack((df['frame'], df['y'], df['x'])), int(np.round(1.5*spot_rad)))
           outer = (diskout['mean']*diskout['area']-diskin['mean']*diskin['area'])/(diskout['area']-diskin['area'])
           contrast = (diskin['mean'].mean()/outer.mean())-1
+          #part_stats = particle_analysis(img, np.column_stack((df['frame'], df['y'], df['x'])), 4)
+          #eccent = part_stats['eccent'].max()
 
           if ((first_frame >= min_start_frame and last_frame <= (img.shape[0]-min_preend_frame))
                   and dst_flags[cnt_tracks] and contrast >= min_contrast):
@@ -180,8 +181,8 @@ def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neigh
             # Extend track to analyze it past Channel 1 track
             lgth = len(df)
             df = df.reset_index(drop=True)
-            if df['frame'][lgth-1]<img2.shape[0]-chan2_add_frame:
-                df = extend_dataframe_frames(df, chan2_add_frame)
+            if df['frame'][lgth-1]<img2.shape[0]-min_preend_frame:
+                df = extend_dataframe_frames(df, min_preend_frame)
 
             # Extract, analyze and store intensity profiles
             diskin = disk_int_stats(img2, np.column_stack((df['frame'], df['y'], df['x'])), 1)
@@ -230,4 +231,4 @@ def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neigh
                                                         'points')
 
   else:
-      dialogboxmes('Error', 'No Tracks + Blobs layers!')
+      dialogboxmes('Error', 'Track blobs first!')
