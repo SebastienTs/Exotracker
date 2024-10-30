@@ -11,17 +11,8 @@ Installation
 	* conda create -n exotracker python=3.9
 	* conda activate exotracker
 	* pip install -r requirements.txt
-5) Edit the batch script exotracker.bat in a file editor and update the path to your USER_HOME
    
-Notes:
+<ins>Note</ins>:
 
-- If you did not use miniconda default installation path, adapt it accordingly in the batch script
-- If you don't run Windows, create a similar batch script for your OS
-
-Usage (Windows)
----------------
-
-Double click exotracker.bat batch script, you can also create a shortcut to this file for convenience.
-
-<ins>Note</ins>: The time-lapses should be pre-processed by slight 2D+T Gaussian blur and bleach correction.<br />
+The time-lapses should be pre-processed by slight 2D+T Gaussian blur and bleach correction.<br />
 This can be performed with the ImageJ macro Yeast_Mosaicer.ijm provided which additionally montages all cell clusters from a set of time-lapses to a mosaic.
