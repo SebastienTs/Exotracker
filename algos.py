@@ -8,6 +8,7 @@ import trackpy as tp
 import pandas as pd
 import numpy as np
 from pathlib import Path
+from os import chmod
 import pickle
 from settings import color_codes
 from utils import *
@@ -225,6 +226,8 @@ def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neigh
       if str(load_image_tiff.imagepath2.value).endswith('.tif'):
         with open(Path(load_image_tiff.imagepath2.value).with_suffix('.pkl'), 'wb') as file:
             pickle.dump(tracks_chan2_props, file)
+      chmod(str(Path(load_image_tiff.imagepath.value).with_suffix('.pkl')), 0o666)
+      chmod(str(Path(load_image_tiff.imagepath2.value).with_suffix('.pkl')), 0o666)
 
       return ([row[1:] for row in tracks_kept.values], {'name': 'ValidBlobs', 'size': int(np.round(5*spot_rad)),
                                                         'border_color': border_colors, 'face_color': 'transparent'},
