@@ -71,8 +71,7 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
           max_mean_speed={'widget_type': 'FloatSlider', 'max': 3},
           max_scale={'widget_type': 'FloatSlider', 'min': 1, 'max': 2.5},
           )
-def track_spots_pytrack(vw: Viewer, search_range=2, gap_memory=15, min_duration=35, min_length=0, max_mean_speed=0.5,
-                        max_scale = 1.33, ) -> LayerDataTuple:
+def track_spots_pytrack(vw: Viewer, search_range=2, gap_memory=15, min_duration=35, min_length=0, max_mean_speed=0.5, max_scale = 1.33, ) -> LayerDataTuple:
 
     if viewer_is_layer(vw, 'Blobs'):
 
@@ -112,10 +111,9 @@ def track_spots_pytrack(vw: Viewer, search_range=2, gap_memory=15, min_duration=
           min_preend_frame={'widget_type': 'IntSlider', 'max': 25},
           min_neighbor_dist={'widget_type': 'IntSlider', 'max': 25},
           min_contrast={'widget_type': 'FloatSlider', 'max': 1},
-          chan2_delta={'widget_type': 'FloatSlider', 'max': 1},
+          chan2_contrast_delta={'widget_type': 'FloatSlider', 'max': 1},
           chan2_fraction={'widget_type': 'FloatSlider', 'max': 1})
-def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neighbor_dist=4, min_contrast=0.28,
-                   chan2_delta=0.08, chan2_fraction=0.4) -> LayerDataTuple:
+def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neighbor_dist=4, min_contrast=0.28, chan2_contrast_delta=0.16, chan2_fraction=0.5) -> LayerDataTuple:
 
   if viewer_is_layer(vw, 'Tracks') and viewer_is_layer(vw, 'Blobs'):
 
@@ -166,20 +164,20 @@ def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neigh
           cnt_tracks += 1
       tracks_kept = tracks_kept.reset_index(drop=True)
 
-      # Channel 2 intensity statistics and track detection
+      # Channel 2 intensity statistics and foci detection
       cnt_coloc = 0
       if str(load_image_tiff.imagepath2.value).endswith('.tif'):
 
           # Retrieve channel 2 images
           img2 = vw.layers['Channel2'].data
-          img2_corr = vw.layers['Channel2_proc'].data
+          #img2_corr = vw.layers['Channel2_corr'].data
 
           # Classify tracks based on Channel 2 intensity profile
           tracks_chan2_props = dict()
           colors = np.zeros(0, dtype=int)
           for i, df in tracks_kept.groupby('particle', as_index=False):
 
-            # Extend track to analyze it past Channel 1 track
+            # Extend track
             lgth = len(df)
             df = df.reset_index(drop=True)
             if df['frame'][lgth-1]<img2.shape[0]-min_preend_frame:
@@ -188,26 +186,31 @@ def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neigh
             # Extract, analyze and store intensity profiles
             diskin = disk_int_stats(img2, np.column_stack((df['frame'], df['y'], df['x'])), 1)
             tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch2_int', list(np.round(diskin['mean'], decimals=1)))
-            diskin = disk_int_stats(img2_corr, np.column_stack((df['frame'], df['y'], df['x'])), 1)
-            tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch2_int_corr', list(np.round(diskin['mean'], decimals=1)))
+
+            diskout = disk_int_stats(img2, np.column_stack((df['frame'], df['y'], df['x'])), int(np.round(1.5 * spot_rad)))
+            outer = (diskout['mean'] * diskout['area'] - diskin['mean'] * diskin['area']) / (diskout['area'] - diskin['area'])
+            contrast = np.clip((diskin['mean'] / outer) - 1, 1e-9, 10)
+            tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch2_contrast', list(contrast))
 
             # Classify channel 2 positive tracks
-            delta = (diskin['mean'].max()-diskin['mean'][0:5].mean()) / diskin['mean'][0:5].mean()
-            tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch2_positive', delta >= chan2_delta)
+            delta = contrast.max() - contrast.min()
+            tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch2_positive', delta >= chan2_contrast_delta)
 
             # Assign channel 2 positive color to blobs
-            if delta >= chan2_delta:
+            if delta >= chan2_contrast_delta:
                 # Estimate channel 2 track
-                start, end, trcklgth = estimate_track_lgth(tracks_kept_props[int(df['particle'].iloc[0])]['ch2_int_corr'], 15, 9, chan2_fraction)
+                start, end, trcklgth = estimate_track_lgth(tracks_kept_props[int(df['particle'].iloc[0])]['ch2_int'], 9, 5, chan2_fraction)
                 tracks_chan2_props[int(df['particle'].iloc[0])] = [start, end, trcklgth]
-                #colors = np.concatenate((colors, np.ones(lgth))
-                colors = np.concatenate((colors, np.zeros(start)))
-                colors = np.concatenate((colors, np.ones(lgth-start)))
+                if lgth-start >= 1 and start >= 1:
+                    colors = np.concatenate((colors, np.ones(start, dtype=np.int)))
+                    colors = np.concatenate((colors, 2*np.ones(lgth-start, dtype=np.int)))
+                else:
+                    colors = np.concatenate((colors, np.ones(lgth, dtype=np.int)))
                 cnt_coloc += 1
             else:
-                colors = np.concatenate((colors, np.zeros(lgth)))
+                colors = np.concatenate((colors, np.zeros(lgth, dtype=np.int)))
 
-          border_colors = np.where(colors, color_codes[2], color_codes[1]).tolist()
+          border_colors = [color_codes[color] for color in colors]
 
       else:
 

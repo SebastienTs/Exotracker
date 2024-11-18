@@ -158,14 +158,13 @@ def load_image_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, start_f
 
     if str(imagepath2).endswith('.tif'):
         img2 = imread(imagepath2, key=range(start_frame, end_frame)).astype(np.uint16)
-        img2_proc = ((img2 + img2[0, :, :].max() + 1)
-                     - gaussian(img2[0, :, :], sigma=5, preserve_range=True)).astype(np.uint16)
+        #img2_corr = ((img2 + img2[0, :, :].max() + 1) - gaussian(img2[0, :, :], sigma=5, preserve_range=True)).astype(np.uint16)
         if viewer_is_layer(vw, 'Channel2'):
             vw.layers['Channel2'].data = img2
-            vw.layers['Channel2_proc'].data = img2_proc
+            #vw.layers['Channel2_corr'].data = img2_corr
         else:
             vw.add_image(img2, name='Channel2')
-            vw.add_image(img2_proc, name='Channel2_proc')
+            #vw.add_image(img2_corr, name='Channel2_corr')
         print(f'Loaded image {imagepath2} ({img2.shape})')
 
     if viewer_is_layer(vw, 'Channel1'):
