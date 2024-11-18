@@ -202,13 +202,13 @@ def analyze_tracks(vw: Viewer, min_start_frame=9, min_preend_frame=25, min_neigh
                 start, end, trcklgth = estimate_track_lgth(tracks_kept_props[int(df['particle'].iloc[0])]['ch2_int'], 9, 5, chan2_fraction)
                 tracks_chan2_props[int(df['particle'].iloc[0])] = [start, end, trcklgth]
                 if lgth-start >= 1 and start >= 1:
-                    colors = np.concatenate((colors, np.ones(start, dtype=np.int)))
-                    colors = np.concatenate((colors, 2*np.ones(lgth-start, dtype=np.int)))
+                    colors = np.concatenate((colors, np.ones(start, dtype=int)))
+                    colors = np.concatenate((colors, 2*np.ones(lgth-start, dtype=int)))
                 else:
-                    colors = np.concatenate((colors, np.ones(lgth, dtype=np.int)))
+                    colors = np.concatenate((colors, np.ones(lgth, dtype=int)))
                 cnt_coloc += 1
             else:
-                colors = np.concatenate((colors, np.zeros(lgth, dtype=np.int)))
+                colors = np.concatenate((colors, np.zeros(lgth, dtype=int)))
 
           border_colors = [color_codes[color] for color in colors]
 
