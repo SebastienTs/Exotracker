@@ -105,16 +105,19 @@ def extend_dataframe_frames(df, nrows):
         df.loc[df.index[-1], 'frame'] += 1
     return df
 
-
-# Flag points which closest nieghbor is below a distance threshold
-def flag_close_points(pts, min_dst):
-
-  dsts = np.sqrt(np.sum((pts[:, np.newaxis, :] - pts[np.newaxis, :, :]) ** 2, axis=-1))
-  np.fill_diagonal(dsts, np.inf)
-  dst_flags = np.all(dsts > min_dst, axis=1)
-
-  return dst_flags
-
+# returns an array of boolean of length the number of tracks with False for tracks for which the distance to another
+# track (distance between closest points at any time frame) is below min_dst
+def flag_min_dist(df, min_dst):
+    key_to_ind = {group_key:i for i, (group_key, group_df) in enumerate(df.groupby('particle'))}
+    keep = np.ones(len(key_to_ind), dtype=bool)
+    for _, group in df.groupby('frame'):
+        coords = group[['x', 'y']].values
+        group_indices = group['particle'].values
+        dist_matrix = np.sqrt(((coords[:, np.newaxis] - coords) ** 2).sum(axis=2))
+        close_pairs = np.where((dist_matrix < min_dst) & (dist_matrix > 0))
+        for elem in close_pairs[0]:
+            keep[key_to_ind[group_indices[elem]]] = False
+    return keep
 
 # Add a subkey to an entry of a dictionary
 def acc_dict(dct, key, subkey, value):
