@@ -11,6 +11,7 @@ import numpy as np
 import ctypes
 import math
 import matplotlib.pyplot as plt
+from itertools import groupby
 from scipy.signal import medfilt
 
 #### Utility functions
@@ -128,24 +129,26 @@ def acc_dict(dct, key, subkey, value):
     return dct
 
 
-# Find the position and length of the longest non zero sequence in a 1D array
-def longest_non_zero_sequence(seq):
-    st, en = max(((i, i + len(s)) for i, s in enumerate(''.join(map(str, seq)).split('0')) if s),
-                     key=lambda x: x[1] - x[0], default=(0, 0))
-    return st, en, en - st
+def longest_non_zero_sequence(v):
+    groups = [(k, len(list(g))) for k, g in groupby(v)]
+    if not groups or not any(k for k, _ in groups):
+        return 0, 0, 0
+    i, l = max(((i, l) for i, (k, l) in enumerate(groups) if k), key=lambda x: x[1])
+    st, ed = sum(g[1] for g in groups[:i]), sum(g[1] for g in groups[:i]) + l - 1
+    return st, ed, ed-st
 
 
-# Find longest high level plateau in an intensity profile
-def estimate_track_lgth(int_profile, medrad1, medrad2, thr):
+# Find the longest high level plateau in an intensity profile
+def estimate_track_lgth(int_profile, medrad, thr):
 
     vals = np.array(int_profile)
-    vals_flt = medfilt(vals, kernel_size=medrad1)
+    vals_flt = medfilt(vals, kernel_size=medrad)
     vals_flt = (vals_flt - vals_flt.min()) / (vals_flt.max() - vals_flt.min())
-    trackflag = (vals_flt >= thr).astype(int)
-    trackflag = medfilt(trackflag, kernel_size=medrad2)
-    start, end , lgth = longest_non_zero_sequence(trackflag)
+    trck_flag = (vals_flt >= thr).astype(int)
+    trck_flag = medfilt(trck_flag, kernel_size=2*medrad+1)
+    start, end , lgth = longest_non_zero_sequence(trck_flag)
 
-    return int(start), int(end), int(lgth)
+    return int(start), int(end), int(lgth), vals_flt, trck_flag
 
 #### Napari widgets / dialog boxes
 
@@ -206,6 +209,37 @@ def viewer_close_layer(vw: Viewer, layername):
             if str(ly) == layername:
                 vw.layers.pop(i)
 
+
+# Tile figures
+def tile_windows(wdth, hght):
+    figs = plt.get_fignums()
+    n = len(figs)
+    cols = math.ceil(math.sqrt(n))
+    for i, num in enumerate(figs):
+        plt.figure(num)
+        mngr = plt.get_current_fig_manager()
+        mngr.window.setGeometry(i % cols * wdth,50 + i // cols * round(hght * 1.05), wdth, hght)
+
+
+# Analyze C2 tracks based on intensity signal and plot tracks
+def analyze_and_plot_C2_tracks(tracks_props, plot_wdth, plot_hgth, ntrckplot, med_lgth, trck_thr):
+    cnt = 1
+    lgths = []
+    plt.figure()
+    for key, value in list(tracks_props.items())[:]:
+        if tracks_props[key]['ch2_positive'] == 1:
+            start, end, trck_lgth, vals_flt, trck_flag = estimate_track_lgth(tracks_props[key]['ch2_int'], med_lgth, trck_thr)
+            lgths.append(trck_lgth)
+            plt.plot(vals_flt, linestyle=':')
+            vals_flt[1:start] = np.NaN
+            vals_flt[end:] = np.NaN
+            plt.plot(vals_flt, color=plt.gca().get_lines()[-1].get_color())
+            if cnt%ntrckplot == 0:
+                plt.figure()
+            cnt += 1
+    tile_windows(plot_wdth, plot_hgth)
+    print(np.mean(lgths), np.std(lgths), np.min(lgths), np.max(lgths))
+    plt.show(block=True)
 
 ## Spotiflow
 

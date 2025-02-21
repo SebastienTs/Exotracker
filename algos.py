@@ -112,8 +112,7 @@ def track_spots_pytrack(vw: Viewer, search_range=2, max_gap=15, min_duration=35,
           min_c1_contrast={'widget_type': 'FloatSlider', 'max': 1},
           min_c2_contrast_delta={'widget_type': 'FloatSlider', 'max': 1, 'step': 0.001},
           track_c2_int_thr={'widget_type': 'FloatSlider', 'max': 1})
-def analyze_tracks(vw: Viewer, min_pre_frame=9, min_post_frame=25, min_neighbor_dist=4, min_c1_contrast=0.26,
-                   min_c2_contrast_delta=0.17, track_c2_int_thr=0.5) -> LayerDataTuple:
+def analyze_tracks(vw: Viewer, min_pre_frame=9, min_post_frame=25, min_neighbor_dist=4, min_c1_contrast=0.26, min_c2_contrast_delta=0.17, track_c2_int_thr=0.44) -> LayerDataTuple:
 
   if viewer_is_layer(vw, 'Tracks') and viewer_is_layer(vw, 'Blobs'):
 
@@ -173,7 +172,7 @@ def analyze_tracks(vw: Viewer, min_pre_frame=9, min_post_frame=25, min_neighbor_
           #img2_corr = vw.layers['Channel2_corr'].data
 
           # Classify tracks based on Channel 2
-          tracks_chan2_props = dict()
+          tracks_chan2_times = dict()
           colors = np.zeros(0, dtype=int)
           for i, df in tracks_kept.groupby('particle', as_index=False):
 
@@ -198,8 +197,8 @@ def analyze_tracks(vw: Viewer, min_pre_frame=9, min_post_frame=25, min_neighbor_
             # Assign channel 2 positive color to blobs
             if delta >= min_c2_contrast_delta:
                 # Estimate start, end and length of channel 2 track
-                start, end, trcklgth = estimate_track_lgth(tracks_kept_props[int(df['particle'].iloc[0])]['ch2_int'], 9, 5, track_c2_int_thr)
-                tracks_chan2_props[int(df['particle'].iloc[0])] = [start, end, trcklgth]
+                start, end, trcklgth, _, _ = estimate_track_lgth(tracks_kept_props[int(df['particle'].iloc[0])]['ch2_int'], 9, track_c2_int_thr)
+                tracks_chan2_times[int(df['particle'].iloc[0])] = [start, end, trcklgth]
                 if lgth-start >= 1 and start >= 1:
                     colors = np.concatenate((colors, np.ones(start, dtype=int)))
                     colors = np.concatenate((colors, 2*np.ones(lgth-start, dtype=int)))
@@ -223,13 +222,16 @@ def analyze_tracks(vw: Viewer, min_pre_frame=9, min_post_frame=25, min_neighbor_
       vw.layers['Tracks'].visible = False
 
       # Export results
-      with open(Path(load_image_tiff.imagepath.value).with_suffix('.pkl'), 'wb') as file:
+      tracks_props_file = Path(load_image_tiff.imagepath.value).with_suffix('.pkl')
+      tracks_chan2_times_file = Path(load_image_tiff.imagepath2.value).with_suffix('.pkl')
+
+      with open(tracks_props_file, 'wb') as file:
           pickle.dump(tracks_kept_props, file)
+          chmod(str(tracks_props_file), 0o666)
       if str(load_image_tiff.imagepath2.value).endswith('.tif'):
-        with open(Path(load_image_tiff.imagepath2.value).with_suffix('.pkl'), 'wb') as file:
-            pickle.dump(tracks_chan2_props, file)
-      chmod(str(Path(load_image_tiff.imagepath.value).with_suffix('.pkl')), 0o666)
-      chmod(str(Path(load_image_tiff.imagepath2.value).with_suffix('.pkl')), 0o666)
+        with open(tracks_chan2_times_file, 'wb') as file:
+            pickle.dump(tracks_chan2_times, file)
+            chmod(str(tracks_chan2_times_file), 0o666)
 
       return ([row[1:] for row in tracks_kept.values],
               {'name': 'ValidBlobs', 'size': int(np.round(5*spot_rad)), 'border_color': border_colors, 'face_color': 'transparent'}, 'points')

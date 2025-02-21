@@ -9,7 +9,7 @@ image_loader = load_image_tiff
 detect_spots = detect_spots_msdog
 track_spots = track_spots_pytrack
 
-# Worflow widgets
+# Workflow widgets
 viewer = napari.Viewer()
 dw1 = viewer.window.add_dock_widget(image_loader, area='right', name='Load Images')
 dw1.setMinimumHeight(200);dw1.setMaximumHeight(200)
