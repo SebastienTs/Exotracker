@@ -1,8 +1,6 @@
-#from spotiflow.model import Spotiflow
-from magicgui import magicgui
 from napari import Viewer
 from napari.types import LayerDataTuple, PointsData, TracksData
-from settings import filename, filename2, start_frame, end_frame
+from magicgui import magicgui
 from tifffile import imread
 from skimage.filters import gaussian
 from scipy import ndimage
@@ -11,14 +9,16 @@ import numpy as np
 import ctypes
 import math
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 from itertools import groupby
 from scipy.signal import medfilt
+from scipy.optimize import curve_fit
+from settings import filename, filename2, start_frame, end_frame, c2_preframes, c2_postframes
 
-#### Utility functions
+#### Helper functions (intensity measurement)
 
-# Return z,y,x coordinates of the inner points of an origin centered disk
+# Return z,y,x coordinates of the inner points of a disk (centered at origin)
 def disk_pts(rad):
-
   pts, ptsq = [], [[], [], [], []]
   rad = np.round(rad).astype(int)
   for x in range(-rad,rad+1,1):
@@ -26,13 +26,11 @@ def disk_pts(rad):
       if (x**2+y**2) <= rad**2:
         pts.append([0, y, x])
         ptsq[2*(x>0)+(y>0)].append([0, y, x])
-
   return pts, ptsq
 
 
-# Compute min/mean/max image intensity within disks centered on input points
+# Compute min/mean/max image intensity within disks of radius rad centered at coordinates pts
 def disk_int_stats(img, pts, rad):
-
   rad = np.round(rad).astype(int)
   pts = np.round(pts).astype(int)
   offsets, offsetsq = disk_pts(rad)
@@ -44,70 +42,45 @@ def disk_int_stats(img, pts, rad):
         min_int[i] = np.min(img[coords[:, 0], coords[:, 1], coords[:, 2]])
         mean_int[i] = np.mean(img[coords[:, 0], coords[:, 1], coords[:, 2]])
         max_int[i] = np.max(img[coords[:, 0], coords[:, 1], coords[:, 2]])
-
   return {'min': min_int, 'mean': mean_int, 'max': max_int, 'area': len(offsets)}
 
 
-# Compute the intensity moments of an image
-def intensity_moments(img):
+# Find the longest high level plateau (above thr) in a filtered intensity profile
+def estimate_track_lgth(int_profile, medrad, thr):
+    vals = np.array(int_profile)
+    vals_flt = medfilt(vals, kernel_size=medrad)
+    vals_flt = (vals_flt - vals_flt.min()) / (vals_flt.max() - vals_flt.min())
+    trck_flag = (vals_flt >= thr).astype(int)
+    #trck_flag = medfilt(trck_flag, kernel_size=2*medrad+1)
+    start, end , lgth = longest_non_zero_sequence(trck_flag)
+    return int(start), int(end), int(lgth), vals_flt, trck_flag
 
-    y, x = np.indices(img.shape)
-    m00 = np.sum(img)
-    m10, m01 = np.sum(x*img), np.sum(y*img)
-    m20, m02, m11 = np.sum(x**2*img), np.sum(y**2*img), np.sum(x*y*img)
-    x_c, y_c = m10/m00, m01/m00
-    mu20, mu02,mu11 = m20/m00-x_c**2, m02/m00-y_c**2, m11/m00-x_c*y_c
+#### Helper functions (track dataframes)
 
-    return mu20, mu02, mu11
-
-
-# Report intensity statistics of particles centered on input points (segmentationless)
-def particle_analysis(img, pts, rad):
-
-    rad = np.round(rad).astype(int)
-    pts = np.round(pts).astype(int)
-    density, eccent, ratio, theta = (np.full(len(pts), np.NaN), np.full(len(pts), np.NaN),
-                                     np.full(len(pts), np.NaN) , np.full(len(pts), np.NaN))
-    if rad >= 4:
-        for i, pt in enumerate(pts):
-            crop = img[pt[0], pt[1]-rad:pt[1]+rad, pt[2]-rad:pt[2]+rad].astype(float)
-            mu20, mu02, mu11 = intensity_moments(crop)
-            major = np.sqrt(2*(mu20+mu02+np.sqrt(4*mu11**2+(mu20-mu02)**2)))
-            minor = np.sqrt(2*(mu20+mu02-np.sqrt(4*mu11**2+(mu20-mu02)**2)))
-            ratio[i] = minor/major
-            eccent[i] = np.sqrt(1-(minor/major)**2)
-            density[i] = np.clip(1-(crop[:1,:].mean()+crop[-1:,:].mean()+crop[:,:1].mean()+crop[:,-1:].mean()+1e-9)
-                              /(4*crop[2:-2, 2:-2].mean()), 0, 1)
-            if ratio[i] > 0.95:
-              theta[i] = np.nan
-            else:
-              theta[i] = 0.5 * np.arctan2(2 * mu11, mu20 - mu02)
-
-    return {'density': np.round(density, decimals=2), 'eccent': np.round(eccent, decimals=2),
-            'ratio': np.round(ratio, decimals=2), 'theta': np.round(theta, decimals=2)}
-
-
-# Fill gaps from a dataframe track
+# Fill gaps in a dataframe track
 def interpolate_track(group):
-
     frames = pd.RangeIndex(group['frame'].min(), group['frame'].max() + 1)
     group_interp = group.set_index('frame', drop=False).reindex(frames)
     group_interp['particle'] = group_interp['particle'].ffill()
     group_interp[['x', 'y', 'frame']] = group_interp[['x', 'y', 'frame']].interpolate(method='linear')
-
     return group_interp
 
 
-# Add extra frames to a dataframe track (same position as last frame)
-def extend_dataframe_frames(df, nrows):
-
+# Append extra frames after a dataframe track (same position as last frame)
+def extend_dataframe_frames_post(df, nrows):
     for j in range(nrows):
         df = pd.concat([df, pd.DataFrame(df.iloc[-1]).T], ignore_index=True)
         df.loc[df.index[-1], 'frame'] += 1
     return df
 
-# returns an array of boolean of length the number of tracks with False for tracks for which the distance to another
-# track (distance between closest points at any time frame) is below min_dst
+# Append extra frames before a dataframe track (same position as first frame)
+def extend_dataframe_frames_pre(df, nrows):
+    for j in range(nrows):
+        df = pd.concat([pd.DataFrame(df.iloc[0]).T, df], ignore_index=True)
+        df.loc[df.index[0], 'frame'] -= 1
+    return df
+
+# Flag tracks with distance to another track < min_dst in a track dataframe
 def flag_min_dist(df, min_dst):
     key_to_ind = {group_key:i for i, (group_key, group_df) in enumerate(df.groupby('particle'))}
     keep = np.ones(len(key_to_ind), dtype=bool)
@@ -120,15 +93,35 @@ def flag_min_dist(df, min_dst):
             keep[key_to_ind[group_indices[elem]]] = False
     return keep
 
+
+#### Helper functions (napari layers)
+
+# Check if viewer layer with specific name exists
+def viewer_is_layer(vw: Viewer, layername):
+    found = False
+    if len(vw.layers) > 0:
+        for i, ly in enumerate(vw.layers):
+            if str(ly) == layername: found = True
+    return found
+
+
+# Close all viewer layers holding the string layername in their name
+def viewer_close_layer(vw: Viewer, layername):
+    if len(vw.layers) > 0:
+        for i, ly in enumerate(vw.layers):
+            if str(ly) == layername:
+                vw.layers.pop(i)
+
+#### Helper functions (miscellaneous)
+
 # Add a subkey to an entry of a dictionary
 def acc_dict(dct, key, subkey, value):
-
     if key not in dct:
         dct[key] = {}
     dct[key][subkey] = value
     return dct
 
-
+# Find the longest pulse in a binary sequence
 def longest_non_zero_sequence(v):
     groups = [(k, len(list(g))) for k, g in groupby(v)]
     if not groups or not any(k for k, _ in groups):
@@ -137,29 +130,26 @@ def longest_non_zero_sequence(v):
     st, ed = sum(g[1] for g in groups[:i]), sum(g[1] for g in groups[:i]) + l - 1
     return st, ed, ed-st
 
+# Tile multiple matplotlib plots
+def tile_windows(wdth, hght):
+    figs = plt.get_fignums()
+    n = len(figs)
+    cols = math.ceil(math.sqrt(n))
+    for i, num in enumerate(figs):
+        plt.figure(num)
+        mngr = plt.get_current_fig_manager()
+        mngr.window.setGeometry(i % cols * wdth,50 + i // cols * round(hght * 1.1), wdth, hght)
 
-# Find the longest high level plateau in an intensity profile
-def estimate_track_lgth(int_profile, medrad, thr):
 
-    vals = np.array(int_profile)
-    vals_flt = medfilt(vals, kernel_size=medrad)
-    vals_flt = (vals_flt - vals_flt.min()) / (vals_flt.max() - vals_flt.min())
-    trck_flag = (vals_flt >= thr).astype(int)
-    trck_flag = medfilt(trck_flag, kernel_size=2*medrad+1)
-    start, end , lgth = longest_non_zero_sequence(trck_flag)
+#### Napari widgets and dialog box
 
-    return int(start), int(end), int(lgth), vals_flt, trck_flag
-
-#### Napari widgets / dialog boxes
-
-# Image loader widget
+## TIFF images loader widget
 @magicgui(call_button='Load',
           imagepath={'widget_type': 'FileEdit', 'label': 'Chan1'},
           imagepath2={'widget_type': 'FileEdit', 'label': 'Chan2'},
-          start_frame={'widget_type': 'IntSlider', 'max': 999},
-          end_frame={'widget_type': 'IntSlider', 'max': 999})
-def load_image_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, start_frame=start_frame, end_frame=end_frame):
-
+          start_frame={'widget_type': 'IntSlider', 'max': 999, 'tooltip': 'Skip first frames to avoid instabilities'},
+          end_frame={'widget_type': 'IntSlider', 'max': 999, 'tooltip': 'Skip last frames to avoid bleaching'})
+def load_images_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, start_frame=start_frame, end_frame=end_frame):
     img = imread(imagepath, key=range(start_frame, end_frame)).astype(np.uint16)
 
     if str(imagepath2).endswith('.tif'):
@@ -177,7 +167,6 @@ def load_image_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, start_f
         vw.layers['Channel1'].data = img
     else:
         vw.add_image(img, name='Channel1')
-
     print(f'Loaded image {imagepath} ({img.shape})')
 
     return None
@@ -187,81 +176,169 @@ def load_image_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, start_f
 def dialogboxmes(message, title):
     return ctypes.windll.user32.MessageBoxW(0, title, message, 0)
 
-#### Napari layers utilities
 
+#### Track measurements analysis and plots (graphs.py script only)
 
-# Check if viewer layer with specific name exists
-def viewer_is_layer(vw: Viewer, layername):
-
-    found = False
-    if len(vw.layers) > 0:
-        for i, ly in enumerate(vw.layers):
-            if str(ly) == layername: found = True
-
-    return found
-
-
-# Close all viewer layers holding the string layername in their name
-def viewer_close_layer(vw: Viewer, layername):
-
-    if len(vw.layers) > 0:
-        for i, ly in enumerate(vw.layers):
-            if str(ly) == layername:
-                vw.layers.pop(i)
-
-
-# Tile figures
-def tile_windows(wdth, hght):
-    figs = plt.get_fignums()
-    n = len(figs)
-    cols = math.ceil(math.sqrt(n))
-    for i, num in enumerate(figs):
-        plt.figure(num)
-        mngr = plt.get_current_fig_manager()
-        mngr.window.setGeometry(i % cols * wdth,50 + i // cols * round(hght * 1.05), wdth, hght)
-
-
-# Analyze C2 tracks based on intensity signal and plot tracks
-def analyze_and_plot_C2_tracks(tracks_props, plot_wdth, plot_hgth, ntrckplot, med_lgth, trck_thr):
+# Re-analyze and plot C2 tracks (possibly multiple per figure)
+def analyze_and_plot_C2_tracks_intensity(tracks_props, trckperplot, medrad, trck_thr):
     cnt = 1
-    lgths = []
     plt.figure()
     for key, value in list(tracks_props.items())[:]:
         if tracks_props[key]['ch2_positive'] == 1:
-            start, end, trck_lgth, vals_flt, trck_flag = estimate_track_lgth(tracks_props[key]['ch2_int'], med_lgth, trck_thr)
-            lgths.append(trck_lgth)
+            start, end, _ , vals_flt, trck_flag = estimate_track_lgth(tracks_props[key]['ch2_ext_int'], medrad, trck_thr)
             plt.plot(vals_flt, linestyle=':')
             vals_flt[1:start] = np.NaN
             vals_flt[end:] = np.NaN
             plt.plot(vals_flt, color=plt.gca().get_lines()[-1].get_color())
-            if cnt%ntrckplot == 0:
+            if cnt%trckperplot == 0:
                 plt.figure()
             cnt += 1
-    tile_windows(plot_wdth, plot_hgth)
-    print(np.mean(lgths), np.std(lgths), np.min(lgths), np.max(lgths))
-    plt.show(block=True)
+    tile_windows(300, 200)
+    plt.show()
 
-## Spotiflow
+# Normalized 0-centered logistic function
+def logistic(x, steepness=4):
+    return 1 / (1 + np.exp(-steepness*x))
 
-# Spotiflow widget
-@magicgui(call_button='Detect')
-def detect_spots_spotiflow(vw: Viewer) -> LayerDataTuple:
+## 2-step logistic model
+def model_logistic(x, x1, h1, x2, h2, x3, h3):
+    result = h1*logistic(x-x1)+h2*logistic(x-x2)+h3*logistic(x-x3)
+    return result
 
-    if viewer_is_layer(vw, 'Channel1'):
+def model_C2_tracks_intensity(tracks_props, timestep):
+    cnt = 1
+    plt.figure()
+    for key, value in list(tracks_props.items())[:]:
+        if tracks_props[key]['ch2_positive'] == 1:
+            int_c2 = tracks_props[key]['ch2_ext_int']
+            int_c2 = (int_c2 - min(int_c2)) / (max(int_c2) - min(int_c2))
+            x = np.arange(0, len(int_c2)*timestep, timestep)
+            plt.plot(x, int_c2, label='Data')
+            popt, _ = curve_fit(model_logistic, x, int_c2, maxfev=10000,
+                             bounds=([0, 0, 0, 0, len(int_c2)*timestep*0.8, -1],
+                                     [len(int_c2)*timestep, 1, len(int_c2)*timestep, 1, len(int_c2)*timestep, 0]))
+            #buf1, buf2 = 0, 0
+            #if popt[1]<0.25:
+            #    buf1 = popt[1]
+            #    popt[0], popt[1] = -1, 0
+            #if popt[3]<0.25 or abs(popt[2]-popt[0])<5:
+            #    buf2 = popt[3]
+            #    popt[2], popt[3] = -1, 0
+            inds = np.argsort([popt[0], popt[2], popt[4]])
+            xpos = np.array([popt[0], popt[2], popt[4]])
+            ypos = np.array([popt[1], popt[3], popt[5]])
+            xpos = np.round(xpos[inds]*100)/100
+            plt.plot(x, model_logistic(x, *popt), 'r-', label='Fit')
+            plt.vlines(x=xpos, ymin=0, ymax=1, colors='green', linestyles='dashed')
+            plt.xlim(0, len(int_c2)*timestep)
+            plt.show(block=True)
+            cnt += 1
 
-        # Input image
-        img = vw.layers['Channel1'].data
+# Plot C1-C2 track pairs intensity profiles
+def plot_C1_C2_tracks_intensity(tracks_props, tracks_c2_times, mx_trck, medrad, int_norm):
+    cnt = 1
+    plt.figure()
+    for key, value in list(tracks_props.items())[:]:
+        if tracks_props[key]['ch2_positive'] == 1 and cnt <= mx_trck:
+            # Median filter
+            #int_c1 = medfilt(tracks_props[key]['ch1_int'], kernel_size=2*medrad+1)
+            int_c1 = medfilt(tracks_props[key]['ch1_ext_int'], kernel_size=2*medrad+1)
+            int_c2 = medfilt(tracks_props[key]['ch2_ext_int'], kernel_size=2*medrad+1)
+            # Normalize intensity
+            if int_norm:
+                int_c1 = (int_c1 - min(int_c1)) / (max(int_c1) - min(int_c1))
+                int_c2 = (int_c2 - min(int_c2)) / (max(int_c2) - min(int_c2))
+            # Plots
+            plt.plot(int_c1, linestyle='--', color='red')
+            int_c1[:c2_preframes], int_c1[-c2_preframes:] = np.NaN, np.NaN
+            plt.plot(int_c1, color='red')
+            plt.plot(int_c2, linestyle=':', color='green')
+            start, end, lgth = tracks_c2_times[key][0], tracks_c2_times[key][1], tracks_c2_times[key][2]
+            int_c2[1:start], int_c2[end:] = np.NaN, np.NaN
+            plt.plot(int_c2, color='green')
+            #plt.plot(int_c2, color=plt.gca().get_lines()[-1].get_color())
+            plt.figure()
+            cnt += 1
+    tile_windows(300, 200)
+    plt.show(block=False)
 
-        # Model
-        model = Spotiflow.from_pretrained("general")
 
-        # Detect blobs frame by frame
-        blb_lst = []
-        for t in range(img.shape[0]):
-            points, details = model.predict(img[t, :, :])
-            blb_lst = blb_lst + [np.insert(blob, 0, t).astype(int) for blob in points]
+# Plot C1/C2 averaged intensity time profiles + std
+def plot_C1_C2_tracks_avg_intensity(tracks_props, mx_trck, mx_prefrc, mx_postfrc, medrad, int_norm):
+    rsplgth = 256
+    arr_int_c1 = np.full((int(1*rsplgth), len(tracks_props)), np.nan)
+    arr_int_c2 = np.full((int(4*rsplgth), len(tracks_props)), np.nan)
+    cnt = 1
+    for key, value in list(tracks_props.items())[:]:
+        if tracks_props[key]['ch2_positive'] == 1 and cnt <= mx_trck:
+            # Retrieve intensity profiles
+            int_c1 = tracks_props[key]['ch1_int']
+            int_c2 = tracks_props[key]['ch2_ext_int']
+            # Median filter intensity profiles
+            int_c1 = medfilt(int_c1, kernel_size=2*medrad+1)
+            int_c2 = medfilt(int_c2, kernel_size=2*medrad+1)
+            # Resample intensity profiles (normalize C1 track length to rsmlgth)
+            c1_lgth = len(int_c1)
+            c2_lgth = len(int_c2)
+            int_c1 = np.interp(np.linspace(0, 1, num=rsplgth), np.linspace(0, 1, num=c1_lgth), int_c1)
+            int_c2 = np.interp(np.linspace(0, 1, num=int(c2_lgth/c1_lgth*rsplgth)), np.linspace(0, 1, num=c2_lgth), int_c2)
+            # Normalize intensity
+            if int_norm:
+                int_c1 = (int_c1-min(int_c1))/(max(int_c1)-min(int_c1))
+                int_c2 = (int_c2-min(int_c2))/(max(int_c2)-min(int_c2))
+            arr_int_c1[:len(int_c1), cnt-1] = int_c1
+            # Account for possible preframe shifting of C2 (C2 has fixed shift of rsplgth and variable shift -preshift)
+            preshift = int(c2_preframes/c1_lgth*rsplgth)
+            arr_int_c2[rsplgth-preshift:rsplgth-preshift+len(int_c2), cnt-1] = int_c2
+            # Set C2 pre/post intensity to first/last intensity value
+            arr_int_c2[:rsplgth-preshift,cnt-1] = arr_int_c2[rsplgth-preshift, cnt-1]
+            arr_int_c2[rsplgth-preshift+len(int_c2):, cnt-1] = arr_int_c2[rsplgth-preshift+len(int_c2)-1, cnt-1]
+            cnt += 1
 
-        return (blb_lst,{'name': 'Blobs', 'size': 9, 'border_color': 'red', 'face_color': 'transparent'}, 'points')
+    # Compute intensity profiles statistics
+    avg_int_c1, avg_int_c2 = np.nanmean(arr_int_c1, axis=1), np.nanmean(arr_int_c2, axis=1)
+    std_int_c1, std_int_c2 = np.nanstd(arr_int_c1, axis=1), np.nanstd(arr_int_c2, axis=1)
 
-    else:
-        dialogboxmes('Error', 'No Channel1 layer!')
+    # Plot graphs
+    fig = plt.figure()
+    plt.title("Intensity profiles (time and intensity normalized)")
+    plt.plot(np.arange(0, 1, 1/rsplgth), avg_int_c1, color='red')
+    plt.plot(np.arange(-1, 3, 1/rsplgth), avg_int_c2, color='green')
+    fig.gca().fill_between(np.arange(0, 1, 1/rsplgth), avg_int_c1-std_int_c1, avg_int_c1+std_int_c1, color='red', alpha=0.2)
+    fig.gca().fill_between(np.arange(-1, 3, 1/rsplgth), avg_int_c2-std_int_c2, avg_int_c2+std_int_c2, color='green', alpha=0.2)
+    plt.xlim(-mx_prefrc, 1+mx_postfrc)
+    plt.show(block=False)
+
+# Plot proteins timelines (mean start/stop + std)
+def plot_timelines(data_list, proteins, mx_frame, timestep):
+    cols = ['red', 'green', 'blue', 'orange', 'pink', 'cyan', 'yellow']
+    n = len(data_list)
+    figsize = (6,3*n)
+    fig, ax = plt.subplots(1, 1, figsize=figsize, sharex=True)
+    for i, data in enumerate(data_list):
+        # Compute average +std track start / end
+        start = np.mean(data[0])*timestep
+        start_std = np.std(data[0])*timestep
+        stop = np.mean(data[1])*timestep
+        stop_std = np.std(data[1])*timestep
+        if i==0:
+            startref = start
+            stopref = stop
+        if i>0:
+            print(f'C2 mean track start shift: {start-startref:.2f} +/- {start_std:.2f}')
+            print(f'C2 mean track stop shift: {stop - stopref:.2f} +/- {stop_std:.2f}')
+        # Plot timelines
+        rect = Rectangle( (start , n-1-i), stop-start, 1, facecolor=cols[i%8], alpha=0.25, label=proteins[i])
+        ax.add_patch(rect)
+        rect = Rectangle( (start-start_std, n-i-0.55), width=2*start_std, height=0.01, facecolor='black')
+        ax.add_patch(rect)
+        rect = Rectangle( (stop-stop_std, n-i-0.45), width=2*stop_std, height=0.01, facecolor='black')
+        ax.add_patch(rect)
+        ax.plot()
+    plt.xlim(0, mx_frame * timestep)
+    plt.xlabel('Time (s)')
+    plt.ylim(0, n)
+    ax.yaxis.set_visible(False)
+    plt.legend()
+    plt.title('Timelines')
+    plt.show(block=False)

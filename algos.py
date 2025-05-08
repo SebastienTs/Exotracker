@@ -1,3 +1,6 @@
+from pathlib import Path
+from os import chmod
+import pickle
 from napari import Viewer
 from napari.types import ImageData, PointsData, LayerDataTuple
 from napari.layers import Tracks, Points, Layer
@@ -7,20 +10,17 @@ from skimage.feature import blob_dog as dog
 import trackpy as tp
 import pandas as pd
 import numpy as np
-from pathlib import Path
-from os import chmod
-import pickle
-from settings import color_codes
+from settings import color_codes, c2_preframes, c2_postframes
 from utils import *
 tp.quiet()
 
 #### Spot Detectors
 
-## 1) Multi-scale Difference of Gaussian based (Skimage)
+## Multi-scale Difference of Gaussian based (msdog) + parametric filter
 
 @magicgui(call_button='Detect',
-          spot_rad={'widget_type': 'FloatSlider', 'min': 1, 'max': 3},
-          detect_thr={'widget_type': 'FloatSlider', 'min': 0.1, 'max': 0.5})
+          spot_rad={'widget_type': 'FloatSlider', 'min': 1, 'max': 3, 'tooltip': 'Spot detection scale (pixels)'},
+          detect_thr={'widget_type': 'FloatSlider', 'min': 0.1, 'max': 0.5, 'tooltip': 'Spot detection sensitivity threshold'})
 def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple:
 
     if viewer_is_layer(vw, 'Channel1'):
@@ -40,7 +40,7 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
           coords = np.c_[(t*np.ones(blobs.shape[0]), blobs[:,:-1])]
           stats = disk_int_stats(img,  coords, 3*spot_rad)
 
-          # Keep only valid blobs (right scale + no 0 intensity around) and split coordinates / scales
+          # Keep only valid blobs (<= maximum scale and far from edges) + split spot coordinates / scales
           blb_coords_scales_kept = [(coords[i, :], blob[-1]) for i, blob in enumerate(blobs)
                       if blob[-1] <= spot_rad and stats['min'][i] >= 1]
           blb_kept_coords, blb_kept_scales = zip(*blb_coords_scales_kept)
@@ -61,16 +61,16 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
 
 #### Particle Trackers
 
-## 1) TrackPy
+## TrackPy + parametric filter
 
 @magicgui(call_button='Track',
-          search_range={'widget_type': 'IntSlider', 'min': 1, 'max': 5},
-          max_gap={'widget_type': 'IntSlider', 'max': 25},
-          min_duration={'widget_type': 'IntSlider', 'min': 5, 'max': 50},
-          min_length={'widget_type': 'FloatSlider', 'max': 3},
-          max_mean_speed={'widget_type': 'FloatSlider', 'max': 3},
-          max_spot_scale={'widget_type': 'FloatSlider', 'min': 1, 'max': 2.5})
-def track_spots_pytrack(vw: Viewer, search_range=2, max_gap=15, min_duration=35, min_length=0, max_mean_speed=0.5, max_spot_scale = 1.33, ) -> LayerDataTuple:
+          search_range={'widget_type': 'IntSlider', 'min': 1, 'max': 5, 'tooltip': 'Spot search range (pixels)'},
+          max_gap={'widget_type': 'IntSlider', 'max': 25, 'tooltip': 'Track maximum number of consecutive frames with misdetected spots'},
+          min_duration={'widget_type': 'IntSlider', 'min': 5, 'max': 50, 'tooltip': 'Track minimum number of frames'},
+          min_length={'widget_type': 'FloatSlider', 'max': 3, 'tooltip': 'Track minimum accumulated length (pixels)'},
+          max_mean_speed={'widget_type': 'FloatSlider', 'max': 3, 'tooltip': 'Track maximum average speed (pixels/frame)'},
+          max_spot_scale={'widget_type': 'FloatSlider', 'min': 1, 'max': 2.5, 'tooltip': 'Track maximum spot scale average (pixels)'})
+def track_spots_trackpy(vw: Viewer, search_range=2, max_gap=15, min_duration=35, min_length=0, max_mean_speed=0.2, max_spot_scale = 1.33, ) -> LayerDataTuple:
 
     if viewer_is_layer(vw, 'Blobs'):
 
@@ -95,7 +95,7 @@ def track_spots_pytrack(vw: Viewer, search_range=2, max_gap=15, min_duration=35,
             tracks_total += 1
 
         # Display results summary
-        track_spots_pytrack.call_button.text = f'Track Spots ({tracks_kept}/{tracks_total})'
+        track_spots_trackpy.call_button.text = f'Track Spots ({tracks_kept}/{tracks_total})'
 
         return (trajectories_flt[['particle', 'frame', 'y', 'x']].values,
                 {'name': 'Tracks', 'head_length': 0, 'tail_length': 999, 'tail_width': 3}, 'tracks')
@@ -105,14 +105,17 @@ def track_spots_pytrack(vw: Viewer, search_range=2, max_gap=15, min_duration=35,
 
 #### Track Analysis
 
+## Parametric filter + C2 intensity gating
+
 @magicgui(call_button='Analyze',
-          min_pre_frame={'widget_type': 'IntSlider', 'max': 25},
-          min_post_frame={'widget_type': 'IntSlider', 'max': 25},
-          min_neighbor_dist={'widget_type': 'IntSlider', 'max': 25},
-          min_c1_contrast={'widget_type': 'FloatSlider', 'max': 1},
-          min_c2_contrast_delta={'widget_type': 'FloatSlider', 'max': 1, 'step': 0.001},
-          track_c2_int_thr={'widget_type': 'FloatSlider', 'max': 1})
-def analyze_tracks(vw: Viewer, min_pre_frame=9, min_post_frame=25, min_neighbor_dist=4, min_c1_contrast=0.26, min_c2_contrast_delta=0.17, track_c2_int_thr=0.44) -> LayerDataTuple:
+          min_pre_frame={'widget_type': 'IntSlider', 'max': 30, 'tooltip': 'Track must start at or after this frame (intensity pre-analysis)'},
+          min_post_frame={'widget_type': 'IntSlider', 'max': 30, 'tooltip': 'Track must end at or before this frame (intensity post-analysis)'},
+          min_neighbor_dist={'widget_type': 'IntSlider', 'max': 10, 'tooltip': 'Minimum distance to the closest point in another track'},
+          min_c1_contrast={'widget_type': 'FloatSlider', 'max': 0.5, 'step': 0.01, 'tooltip': 'C1 minimum intensity ratio between spot and surrounding intensity (track average)'},
+          min_c2_contrast_delta={'widget_type': 'FloatSlider', 'max': 0.5, 'step': 0.01, 'tooltip': 'C2 minimum difference between maximum and minimum contrast (accross track)'},
+          track_c2_int_thr={'widget_type': 'FloatSlider', 'max': 0.5, 'tooltip': 'C2 track detection normalized intensity level'})
+def analyze_tracks_int_gate(vw: Viewer, min_pre_frame=c2_preframes, min_post_frame=c2_postframes, min_neighbor_dist=4,
+                            min_c1_contrast=0.26, min_c2_contrast_delta=0.15, track_c2_int_thr=0.3) -> LayerDataTuple:
 
   if viewer_is_layer(vw, 'Tracks') and viewer_is_layer(vw, 'Blobs'):
 
@@ -129,7 +132,6 @@ def analyze_tracks(vw: Viewer, min_pre_frame=9, min_post_frame=25, min_neighbor_
       # Flag close sites
       cx = trajectories.groupby('particle', as_index=False)['x'].mean()
       cy = trajectories.groupby('particle', as_index=False)['y'].mean()
-      #dst_flags = flag_close_points(np.column_stack((cy['y'], cx['x'])), min_neighbor_dist)
       dst_flags = flag_min_dist(trajectories, min_neighbor_dist)
 
       # Filter tracks
@@ -154,7 +156,7 @@ def analyze_tracks(vw: Viewer, min_pre_frame=9, min_post_frame=25, min_neighbor_
 
               tracks_kept = pd.concat([tracks_kept, df])
 
-              # Store channel 1 intensity profile
+              # Store C1 intensity profile
               tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch1_int', list(np.round(diskin['mean'], decimals=1)))
               tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'track', df)
               tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'length', lgth)
@@ -163,41 +165,49 @@ def analyze_tracks(vw: Viewer, min_pre_frame=9, min_post_frame=25, min_neighbor_
           cnt_tracks += 1
       tracks_kept = tracks_kept.reset_index(drop=True)
 
-      # Channel 2 intensity statistics and foci detection
+      # C2 intensity statistics and foci detection
       cnt_coloc = 0
-      if str(load_image_tiff.imagepath2.value).endswith('.tif'):
+      if str(load_images_tiff.imagepath2.value).endswith('.tif'):
 
-          # Retrieve channel 2 images
+          # Retrieve C2 images
           img2 = vw.layers['Channel2'].data
           #img2_corr = vw.layers['Channel2_corr'].data
 
-          # Classify tracks based on Channel 2
+          # Classify tracks based on C2
           tracks_chan2_times = dict()
           colors = np.zeros(0, dtype=int)
           for i, df in tracks_kept.groupby('particle', as_index=False):
 
-            # Extend track
+            # Extend track for C1/C2 pre- and post- intensity analysis (position set to first/last track location)
             lgth = len(df)
             df = df.reset_index(drop=True)
             if df['frame'][lgth-1]<img2.shape[0]-min_post_frame:
-                df = extend_dataframe_frames(df, min_post_frame)
+                df = extend_dataframe_frames_post(df, min_post_frame)
+            if df['frame'][0]>min_pre_frame:
+                df = extend_dataframe_frames_pre(df, min_pre_frame)
 
-            # Extract and store intensity and contrast profiles
+            # Extract and store intensity and contrast profiles for C1 extended track
+            diskin = disk_int_stats(img, np.column_stack((df['frame'], df['y'], df['x'])), 1)
+            diskout = disk_int_stats(img, np.column_stack((df['frame'], df['y'], df['x'])),int(np.round(1.5 * spot_rad)))
+            outer = (diskout['mean'] * diskout['area'] - diskin['mean'] * diskin['area']) / (diskout['area'] - diskin['area'])
+            contrast = np.clip((diskin['mean'] / outer) - 1, 1e-9, 1)
+            tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch1_ext_int', list(np.round(diskin['mean'], decimals=1)))
+            tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch1_ext_contrast', list(contrast))
+
+            # Extract and store intensity and contrast profiles for C2 extended track
             diskin = disk_int_stats(img2, np.column_stack((df['frame'], df['y'], df['x'])), 1)
             diskout = disk_int_stats(img2, np.column_stack((df['frame'], df['y'], df['x'])), int(np.round(1.5 * spot_rad)))
             outer = (diskout['mean'] * diskout['area'] - diskin['mean'] * diskin['area']) / (diskout['area'] - diskin['area'])
             contrast = np.clip((diskin['mean']/outer)-1, 1e-9, 1)
-            tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch2_int', list(np.round(diskin['mean'], decimals=1)))
-            tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch2_contrast', list(contrast))
+            tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch2_ext_int', list(np.round(diskin['mean'], decimals=1)))
+            tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch2_ext_contrast', list(contrast))
 
-            # Classify channel 2 positive tracks
+            # Tracks with sufficient C2 contrast are considered C2 positive tracks
             delta = contrast.max() - contrast.min()
             tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch2_positive', delta >= min_c2_contrast_delta)
-
-            # Assign channel 2 positive color to blobs
             if delta >= min_c2_contrast_delta:
-                # Estimate start, end and length of channel 2 track
-                start, end, trcklgth, _, _ = estimate_track_lgth(tracks_kept_props[int(df['particle'].iloc[0])]['ch2_int'], 9, track_c2_int_thr)
+                # Estimate start, end and length of C2 track
+                start, end, trcklgth, _, _ = estimate_track_lgth(tracks_kept_props[int(df['particle'].iloc[0])]['ch2_ext_int'], 9, track_c2_int_thr)
                 tracks_chan2_times[int(df['particle'].iloc[0])] = [start, end, trcklgth]
                 if lgth-start >= 1 and start >= 1:
                     colors = np.concatenate((colors, np.ones(start, dtype=int)))
@@ -212,23 +222,23 @@ def analyze_tracks(vw: Viewer, min_pre_frame=9, min_post_frame=25, min_neighbor_
 
       else:
 
-          border_colors = 'red'
+          border_colors = color_codes[0]
 
       # Display results summary
-      analyze_tracks.call_button.text = f'Filter Tracks ({cnt_coloc}/{cnt_kept}/{cnt_tracks})'
+      analyze_tracks_int_gate.call_button.text = f'Filter Tracks ({cnt_coloc}/{cnt_kept}/{cnt_tracks})'
 
       # Hide Blobs and Tracks layers
       vw.layers['Blobs'].visible = False
       vw.layers['Tracks'].visible = False
 
       # Export results
-      tracks_props_file = Path(load_image_tiff.imagepath.value).with_suffix('.pkl')
-      tracks_chan2_times_file = Path(load_image_tiff.imagepath2.value).with_suffix('.pkl')
+      tracks_props_file = Path(load_images_tiff.imagepath.value).with_suffix('.pkl')
+      tracks_chan2_times_file = Path(load_images_tiff.imagepath2.value).with_suffix('.pkl')
 
       with open(tracks_props_file, 'wb') as file:
           pickle.dump(tracks_kept_props, file)
           chmod(str(tracks_props_file), 0o666)
-      if str(load_image_tiff.imagepath2.value).endswith('.tif'):
+      if str(load_images_tiff.imagepath2.value).endswith('.tif'):
         with open(tracks_chan2_times_file, 'wb') as file:
             pickle.dump(tracks_chan2_times, file)
             chmod(str(tracks_chan2_times_file), 0o666)
