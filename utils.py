@@ -200,39 +200,30 @@ def analyze_and_plot_C2_tracks_intensity(tracks_props, trckperplot, medrad, trck
 def logistic(x, steepness=4):
     return 1 / (1 + np.exp(-steepness*x))
 
-## 2-step logistic model
+## Multi-logistic function
 def model_logistic(x, x1, h1, x2, h2, x3, h3):
     result = h1*logistic(x-x1)+h2*logistic(x-x2)+h3*logistic(x-x3)
     return result
 
+## Fit a 2 up-step, 1 down-step logistic function to C2 normalized extended intensity profiles
 def model_C2_tracks_intensity(tracks_props, timestep):
-    cnt = 1
     plt.figure()
     for key, value in list(tracks_props.items())[:]:
         if tracks_props[key]['ch2_positive'] == 1:
             int_c2 = tracks_props[key]['ch2_ext_int']
             int_c2 = (int_c2 - min(int_c2)) / (max(int_c2) - min(int_c2))
             x = np.arange(0, len(int_c2)*timestep, timestep)
-            plt.plot(x, int_c2, label='Data')
             popt, _ = curve_fit(model_logistic, x, int_c2, maxfev=10000,
                              bounds=([0, 0, 0, 0, len(int_c2)*timestep*0.8, -1],
                                      [len(int_c2)*timestep, 1, len(int_c2)*timestep, 1, len(int_c2)*timestep, 0]))
-            #buf1, buf2 = 0, 0
-            #if popt[1]<0.25:
-            #    buf1 = popt[1]
-            #    popt[0], popt[1] = -1, 0
-            #if popt[3]<0.25 or abs(popt[2]-popt[0])<5:
-            #    buf2 = popt[3]
-            #    popt[2], popt[3] = -1, 0
             inds = np.argsort([popt[0], popt[2], popt[4]])
             xpos = np.array([popt[0], popt[2], popt[4]])
-            ypos = np.array([popt[1], popt[3], popt[5]])
             xpos = np.round(xpos[inds]*100)/100
+            plt.plot(x, int_c2, label='Data')
             plt.plot(x, model_logistic(x, *popt), 'r-', label='Fit')
             plt.vlines(x=xpos, ymin=0, ymax=1, colors='green', linestyles='dashed')
             plt.xlim(0, len(int_c2)*timestep)
-            plt.show(block=True)
-            cnt += 1
+            plt.show(block=False)
 
 # Plot C1-C2 track pairs intensity profiles
 def plot_C1_C2_tracks_intensity(tracks_props, tracks_c2_times, mx_trck, medrad, int_norm):
@@ -264,7 +255,7 @@ def plot_C1_C2_tracks_intensity(tracks_props, tracks_c2_times, mx_trck, medrad, 
 
 
 # Plot C1/C2 averaged intensity time profiles + std
-def plot_C1_C2_tracks_avg_intensity(tracks_props, mx_trck, mx_prefrc, mx_postfrc, medrad, int_norm):
+def plot_C1_C2_tracks_avg_intensity(tracks_props, mx_trck, mx_prefrc, mx_postfrc, medrad, int_norm, proteins):
     rsplgth = 256
     arr_int_c1 = np.full((int(1*rsplgth), len(tracks_props)), np.nan)
     arr_int_c2 = np.full((int(4*rsplgth), len(tracks_props)), np.nan)
@@ -302,11 +293,12 @@ def plot_C1_C2_tracks_avg_intensity(tracks_props, mx_trck, mx_prefrc, mx_postfrc
     # Plot graphs
     fig = plt.figure()
     plt.title("Intensity profiles (time and intensity normalized)")
-    plt.plot(np.arange(0, 1, 1/rsplgth), avg_int_c1, color='red')
-    plt.plot(np.arange(-1, 3, 1/rsplgth), avg_int_c2, color='green')
+    plt.plot(np.arange(0, 1, 1/rsplgth), avg_int_c1, color='red', label=proteins[0])
+    plt.plot(np.arange(-1, 3, 1/rsplgth), avg_int_c2, color='green', label=proteins[1])
     fig.gca().fill_between(np.arange(0, 1, 1/rsplgth), avg_int_c1-std_int_c1, avg_int_c1+std_int_c1, color='red', alpha=0.2)
     fig.gca().fill_between(np.arange(-1, 3, 1/rsplgth), avg_int_c2-std_int_c2, avg_int_c2+std_int_c2, color='green', alpha=0.2)
     plt.xlim(-mx_prefrc, 1+mx_postfrc)
+    plt.legend()
     plt.show(block=False)
 
 # Plot proteins timelines (mean start/stop + std)
@@ -340,5 +332,4 @@ def plot_timelines(data_list, proteins, mx_frame, timestep):
     plt.ylim(0, n)
     ax.yaxis.set_visible(False)
     plt.legend()
-    plt.title('Timelines')
     plt.show(block=False)

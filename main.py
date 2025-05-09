@@ -15,6 +15,7 @@ import napari
 import warnings
 from algos import *
 from utils import *
+from graphs import *
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 # Workflow configuration
@@ -22,6 +23,7 @@ image_loader = load_images_tiff
 detect_spots = detect_spots_msdog
 track_spots = track_spots_trackpy
 analyze_tracks = analyze_tracks_int_gate
+graph_data = graph_tracks
 
 # Workflow runner (with default settings)
 def run_workflow():
@@ -40,6 +42,8 @@ dw3 = viewer.window.add_dock_widget(track_spots, area='right', name='Track Spots
 dw3.setMinimumHeight(240);dw3.setMaximumHeight(240)
 dw4 = viewer.window.add_dock_widget(analyze_tracks, area='right', name='Analyze Tracks')
 dw4.setMinimumWidth(360)
+dw5 = viewer.window.add_dock_widget(graph_data, area='right', name='Analyze Data')
+dw5.setMinimumWidth(360)
 
 # Run workflow
 #run_workflow()
