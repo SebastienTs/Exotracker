@@ -152,11 +152,11 @@ def track_spots_trackpy(vw: Viewer, max_spot_mean_scale = 1.33, search_range=2, 
           min_neighbor_dist={'widget_type': 'IntSlider', 'max': 10, 'tooltip': 'Minimum distance to closest point in any other track (pixels)'},
           min_c1_contrast={'widget_type': 'FloatSlider', 'max': 0.5, 'step': 0.001, 'tooltip': 'C1 minimum average contrast'},
           min_c2_contrast_delta={'widget_type': 'FloatSlider', 'max': 0.5, 'step': 0.001, 'tooltip': 'C2 minimum contrast variation'},
-          track_c2_int_medrad={'widget_type': 'IntSlider', 'min': 1, 'max': 6, 'tooltip': 'C2 track detection median filter window half length'},
+          track_c2_int_medrad={'widget_type': 'IntSlider', 'min': 1, 'max': 9, 'tooltip': 'C2 track detection median filter window half length'},
           track_c2_int_thr={'widget_type': 'FloatSlider', 'min': 0.25, 'max': 0.5, 'step': 0.01, 'tooltip': 'C2 track detection normalized intensity threshold'})
 def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=50,
                             min_neighbor_dist=4, min_c1_contrast=0.26, min_c2_contrast_delta=0.11,
-                            track_c2_int_medrad=4, track_c2_int_thr=0.35) -> LayerDataTuple:
+                            track_c2_int_medrad=5, track_c2_int_thr=0.35) -> LayerDataTuple:
 
   if viewer_is_layer(vw, 'Tracks') and viewer_is_layer(vw, 'Blobs'):
 
