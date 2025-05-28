@@ -1,5 +1,5 @@
 from pathlib import Path
-from os import chmod
+from os import chmod, path
 from napari import Viewer
 from napari.types import ImageData, PointsData, LayerDataTuple
 from napari.layers import Tracks, Points, Layer
@@ -26,28 +26,32 @@ tp.quiet()
           skiplast={'widget_type': 'IntSlider', 'max': 50, 'tooltip': 'Skip the last N frame(s) when loading the image'})
 def load_images_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, proteins=proteins, time_step=frame_timestep, skipfirst=skipfirst, skiplast=skiplast):
 
-    viewer_close_all_layers(vw)
+    if path.isfile(imagepath) and str(imagepath).endswith('.tif'):
 
-    with TiffFile(imagepath) as tif:
-        num_pages = len(tif.pages)
-        img = imread(imagepath, key=range(min(skipfirst, num_pages-1), max(1, num_pages-skiplast))).astype(np.uint16)
+        vw.layers.clear()
 
-    if str(imagepath2).endswith('.tif'):
-        img2 = imread(imagepath2, key=range(min(skipfirst, num_pages-1), max(1, num_pages-skiplast))).astype(np.uint16)
-        #img2_corr = ((img2 + img2[0, :, :].max() + 1) - gaussian(img2[0, :, :], sigma=5, preserve_range=True)).astype(np.uint16)
-        if viewer_is_layer(vw, 'Channel2'):
-            vw.layers['Channel2'].data = img2
-            #vw.layers['Channel2_corr'].data = img2_corr
+        with TiffFile(imagepath) as tif:
+            num_pages = len(tif.pages)
+            img = imread(imagepath, key=range(min(skipfirst, num_pages-1), max(1, num_pages-skiplast))).astype(np.uint16)
+
+        if path.isfile(imagepath2) and str(imagepath2).endswith('.tif'):
+            img2 = imread(imagepath2, key=range(min(skipfirst, num_pages-1), max(1, num_pages-skiplast))).astype(np.uint16)
+            #img2_corr = ((img2 + img2[0, :, :].max() + 1) - gaussian(img2[0, :, :], sigma=5, preserve_range=True)).astype(np.uint16)
+            if viewer_is_layer(vw, 'Channel2'):
+                vw.layers['Channel2'].data = img2
+                #vw.layers['Channel2_corr'].data = img2_corr
+            else:
+                vw.add_image(img2, name='Channel2')
+                #vw.add_image(img2_corr, name='Channel2_corr')
+            print(f'Loaded image {imagepath2} ({img2.shape})')
         else:
-            vw.add_image(img2, name='Channel2')
-            #vw.add_image(img2_corr, name='Channel2_corr')
-        print(f'Loaded image {imagepath2} ({img2.shape})')
+            print("C2 File doesn't exist or isn't a TIFF file")
 
-    if viewer_is_layer(vw, 'Channel1'):
-        vw.layers['Channel1'].data = img
-    else:
         vw.add_image(img, name='Channel1')
-    print(f'Loaded image {imagepath} ({img.shape})')
+        print(f'Loaded image {imagepath} ({img.shape})')
+
+    else:
+        print("C1 File doesn't exist or isn't a TIFF file")
 
     return None
 
@@ -86,7 +90,8 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
           blb_scales = blb_scales + list(blb_kept_scales)
 
         # Display blob count
-        detect_spots_msdog.call_button.text = f'Detected Spots ({np.round(len(blb_lst)/img.shape[0])}/frame)'
+        print(f'Detected {len(blb_lst)} spots ({np.round(len(blb_lst)/img.shape[0])}/frame)')
+        detect_spots_msdog.call_button.text = f'{len(blb_lst)} Spots ({np.round(len(blb_lst)/img.shape[0])}/frame)'
 
         # Return napari point layer
         return ([blob[:3] for blob in blb_lst],
@@ -133,6 +138,7 @@ def track_spots_trackpy(vw: Viewer, max_spot_mean_scale = 1.33, search_range=2, 
             tracks_total += 1
 
         # Display results summary
+        print(f'Detected {tracks_kept} tracks ({tracks_total} candidates)')
         track_spots_trackpy.call_button.text = f'Track Spots ({tracks_kept}/{tracks_total})'
 
         # Return napari track layer
@@ -146,7 +152,7 @@ def track_spots_trackpy(vw: Viewer, max_spot_mean_scale = 1.33, search_range=2, 
 
 ## Parametric Filter + C2 Intensity Gating
 
-@magicgui(call_button='Analyze',
+@magicgui(call_button='Filter and Save Tracks',
           min_startframe={'widget_type': 'IntSlider', 'max': 50, 'tooltip': 'Earliest track start (frame index)'},
           min_afterframe={'widget_type': 'IntSlider', 'max': 50, 'tooltip': 'Latest track end (number of frames before last frame)'},
           min_neighbor_dist={'widget_type': 'IntSlider', 'max': 10, 'tooltip': 'Minimum distance to closest point in any other track (pixels)'},
@@ -154,9 +160,8 @@ def track_spots_trackpy(vw: Viewer, max_spot_mean_scale = 1.33, search_range=2, 
           min_c2_contrast_delta={'widget_type': 'FloatSlider', 'max': 0.5, 'step': 0.001, 'tooltip': 'C2 minimum contrast variation'},
           track_c2_int_medrad={'widget_type': 'IntSlider', 'min': 1, 'max': 9, 'tooltip': 'C2 track detection median filter window half length'},
           track_c2_int_thr={'widget_type': 'FloatSlider', 'min': 0.25, 'max': 0.5, 'step': 0.01, 'tooltip': 'C2 track detection normalized intensity threshold'})
-def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=50,
-                            min_neighbor_dist=4, min_c1_contrast=0.26, min_c2_contrast_delta=0.11,
-                            track_c2_int_medrad=5, track_c2_int_thr=0.35) -> LayerDataTuple:
+def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=50, min_neighbor_dist=4, min_c1_contrast=0.26,
+                            min_c2_contrast_delta=0.15, track_c2_int_medrad=5, track_c2_int_thr=0.35) -> LayerDataTuple:
 
   if viewer_is_layer(vw, 'Tracks') and viewer_is_layer(vw, 'Blobs'):
 
@@ -201,14 +206,17 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=50,
 
               tracks_kept = pd.concat([tracks_kept, df])
 
-              # Store metadata, track information and C1 intensity profile
+              # Append track information, track intensity profile and metadata
               tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'protein1', proteins[0])
               tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch1_int', list(np.round(diskin['mean'], decimals=1)))
               tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'track', df)
               tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'length', lgth)
+              tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'frame_timestep', load_images_tiff.time_step.value)
+
               cnt_kept += 1
 
           cnt_tracks += 1
+
       tracks_kept = tracks_kept.reset_index(drop=True)
 
       # C2 intensity statistics
@@ -227,20 +235,19 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=50,
             # Extend track for C1/C2 pre- and post- intensity analysis (at first/last particle location)
             lgth = len(df)
             df = df.reset_index(drop=True)
-            if min_afterframe>0 and df['frame'][lgth-1]<=(img2.shape[0]-min_afterframe-1):
-                df = extend_dataframe_frames_post(df, min_afterframe)
-            if min_startframe>0 and df['frame'][0]>=min_startframe:
-                df = extend_dataframe_frames_pre(df, min_startframe)
+            df = extend_dataframe_frames_post(df, min_afterframe)
+            df = extend_dataframe_frames_pre(df, min_startframe)
 
-            # Add metadata
-            tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'frame_timestep', load_images_tiff.time_step.value)
+            # Append metadata
             tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'int_preframe', min_startframe)
             tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'int_postframe', min_afterframe)
-            tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'protein2', proteins[1])
 
-            # Extract and store intensity for C1 extended track
+            # Extract and store intensity profile for C1 extended track
             diskin = disk_int_stats(img, np.column_stack((df['frame'], df['y'], df['x'])), 1)
             tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch1_ext_int', list(np.round(diskin['mean'], decimals=1)))
+
+            # Append metadata
+            tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'protein2', proteins[1])
 
             # Extract and store intensity and contrast profiles for C2 extended track
             diskin = disk_int_stats(img2, np.column_stack((df['frame'], df['y'], df['x'])), 1)
@@ -251,7 +258,7 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=50,
             tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch2_ext_contrast', list(contrast))
 
             # Flag C2 positive tracks (for minimal contrast variation)
-            contrast = medfilt(contrast, kernel_size=2*track_c2_int_medrad+1)
+            contrast = medfilt(contrast, kernel_size=5)     # Added short temporal filter
             delta = contrast.max()-contrast.min()
             ch2_positive = delta >= min_c2_contrast_delta
             tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch2_positive', ch2_positive)
@@ -288,11 +295,8 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=50,
           border_colors = color_codes[0]
 
       # Display results summary
-      print(f'Number of candidate tracks: {cnt_tracks}')
-      print(f'Number of valid C1 tracks: {cnt_kept}')
-      print(f'Number of C2 positive C1 tracks: {cnt_positive}')
-      print(f'Number of C2 positive C1 track(s) with cropped C2 positive start: {cnt_startcrop}')
-      print(f'Number of C2 positive C1 track(s) with cropped C2 positive end: {cnt_endcrop}')
+      print(f'Filtered C1 tracks (Total)      : {cnt_kept}')
+      print(f'Filtered C1 tracks (C2 positive): {cnt_positive} (cropped start/stop: {cnt_startcrop}/{cnt_endcrop})')
       analyze_tracks_int_gate.call_button.text = f'Filter Tracks ({cnt_positive}/{cnt_kept}/{cnt_tracks})'
 
       # Hide Blobs and Tracks layers

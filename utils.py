@@ -112,12 +112,6 @@ def viewer_close_layer(vw: Viewer, layername):
                 vw.layers.pop(i)
 
 
-# Close all layers
-def viewer_close_all_layers(vw: Viewer):
-    if len(vw.layers) > 0:
-        for i, ly in enumerate(vw.layers):
-            vw.layers.pop(i)
-
 #### Helper functions (miscellaneous)
 
 # Add a subkey to a dictionnary entry
