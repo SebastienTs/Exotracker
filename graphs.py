@@ -135,7 +135,7 @@ def plot_tracks_avg_intensity(tracks_props, proteins, medrad, int_norm):
     plt.show(block=False)
 
 
-# Plot proteins timelines (mean start/stop + std)
+# Plot proteins timelines (mean start/end + std)
 def plot_tracks_timelines(data_list, proteins):
     cols = ['red', 'green', 'blue', 'orange', 'pink', 'cyan', 'yellow']
     n = len(data_list)
@@ -145,21 +145,21 @@ def plot_tracks_timelines(data_list, proteins):
         # Compute average +std track start / end
         start = np.mean(data[0])
         start_std = np.std(data[0])
-        stop = np.mean(data[1])
-        stop_std = np.std(data[1])
+        end = np.mean(data[1])
+        end_std = np.std(data[1])
         if i==0:
             startref = start
-            stopref = stop
+            endref = end
         if i>0:
             print(f'{proteins[i]} mean track start shift: {start-startref:.2f} +/- {start_std:.2f}')
-            print(f'{proteins[i]} mean track stop shift: {stop-stopref:.2f} +/- {stop_std:.2f}')
+            print(f'{proteins[i]} mean track end shift: {end-endref:.2f} +/- {end_std:.2f}')
         # Plot timelines
-        rect = Rectangle((start, n-1-i), stop-start, 1, facecolor=cols[i%8], alpha=0.25, label=proteins[i]+f'(N = {len(data[0])})')
+        rect = Rectangle((start, n-1-i), end-start, 1, facecolor=cols[i%8], alpha=0.25, label=proteins[i]+f'(N = {len(data[0])})')
         ax.add_patch(rect)
-        rect = Rectangle((start-start_std, n-i-0.55), width=2*start_std, height=0.01, facecolor='black')
-        ax.add_patch(rect)
-        rect = Rectangle((stop-stop_std, n-i-0.45), width=2*stop_std, height=0.01, facecolor='black')
-        ax.add_patch(rect)
+        #rect = Rectangle((start-start_std, n-i-0.55), width=2*start_std, height=0.01, facecolor='black')
+        #ax.add_patch(rect)
+        #rect = Rectangle((end-end_std, n-i-0.45), width=2*end_std, height=0.01, facecolor='black')
+        #ax.add_patch(rect)
         ax.plot()
     plt.xlabel('Time (s)')
     plt.ylim(0, n)
@@ -167,6 +167,10 @@ def plot_tracks_timelines(data_list, proteins):
     plt.legend()
     plt.title('Track timelines')
     plt.show(block=False)
+
+def trinity_exporter(tracks_props):
+    for key, value in list(tracks_props.items())[:]:
+        lgth_c1 = tracks_props[key]['length']
 
 
 @magicgui(call_button='Analyze Saved Tracks',
@@ -176,9 +180,11 @@ def plot_tracks_timelines(data_list, proteins):
           plot_first_trck={'widget_type': 'IntSlider', 'min': 1, 'max': 250, 'tooltip': 'First track to plot'},
           plot_last_trck={'widget_type': 'IntSlider', 'min': 1, 'max': 250, 'tooltip': 'Last track to plot'},
           plot_avg_intprofile={'widget_type': 'Checkbox', 'tooltip': 'Plot average intensity profile'},
-          plot_timelines={'widget_type': 'Checkbox', 'tooltip': 'Plot timelines'})
+          avgintnorm={'widget_type': 'Checkbox', 'tooltip': 'Normalize intensity in average intensity profile'},
+          plot_timelines={'widget_type': 'Checkbox', 'tooltip': 'Plot timelines'},
+          export_trinity={'widget_type': 'Checkbox', 'tooltip': 'Export to Trinity format'})
 def graph_tracks(groupfiles=False, model=False, plot_intprofiles=False, plot_first_trck=1, plot_last_trck=25,
-                 plot_avg_intprofile=True, plot_timelines=True):
+                 plot_avg_intprofile=True, avgintnorm=True, plot_timelines=True, export_trinity=False):
 
     # Proteins of the current dataset
     proteins_str = load_images_tiff.proteins.value
@@ -212,10 +218,11 @@ def graph_tracks(groupfiles=False, model=False, plot_intprofiles=False, plot_fir
     if model:
         fit_plateaus(tracks_props, proteins=proteins, first_trck=plot_first_trck, last_trck=plot_last_trck)
     if plot_intprofiles:
-        plot_tracks_intensity(tracks_props, tracks_c2_times, proteins=proteins, first_trck=plot_first_trck, last_trck = plot_last_trck, medrad = 4, int_norm = False)
+        plot_tracks_intensity(tracks_props, tracks_c2_times, proteins=proteins,
+                              first_trck=plot_first_trck, last_trck = plot_last_trck, medrad = 4, int_norm = False)
     if plot_avg_intprofile:
         medrad = analyze_tracks_int_gate.track_c2_int_medrad.value
-        plot_tracks_avg_intensity(tracks_props, proteins=proteins, medrad=medrad, int_norm = True)
+        plot_tracks_avg_intensity(tracks_props, proteins=proteins, medrad=medrad, int_norm = avgintnorm)
 
     if plot_timelines:
 
@@ -255,3 +262,6 @@ def graph_tracks(groupfiles=False, model=False, plot_intprofiles=False, plot_fir
 
         # Call plotting function
         plot_tracks_timelines(data_list, proteins=proteins)
+
+    if export_trinity:
+        trinity_exporter(tracks_props)
