@@ -1,6 +1,6 @@
 # Default file names and metadata
-filename = 'D:/Projects/UPF/Live_exo84_sec9/Oblique/_TestImages/Test_5x5_pre_C1.tif'
-filename2 = 'D:/Projects/UPF/Live_exo84_sec9/Oblique/_TestImages/Test_5x5_pre_C2.tif'
+filename = 'D:/Projects/UPF/Oblique_exo84_sec9/img1_Uva-30C-exo84_C1.tif'
+filename2 = 'D:/Projects/UPF/Oblique_exo84_sec9/img1_Uva-30C-sec9_C2.tif'
 skipfirst, skiplast = 25, 25                    # Exclude first/last N frame(s) from time-lapses
 frame_timestep = 0.123                          # Frame duration (s)
 proteins=['uva-30C-exo84', 'uva-30C-sec9']      # C1/C2 experimental conditions & proteins
@@ -12,6 +12,11 @@ color_codes = ['red', 'yellow', 'green']        # Exocytosis annotation colors: 
 #### Nomenclature
 #
 # Contrast: Intensity ratio between spot intensity (1 pixel radius disk) and surrounding (1.5*spot_rad radius disk)
+#
+#### Input format
+#
+# Input image(s) must be TIFF files with the _C1 and _C2 specifier for the fluorescence channels
+# For Trinity export it is also required that the temperature be specified as a _xxC_ field in the protein conditions
 #
 #### Results format
 #
