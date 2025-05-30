@@ -1,5 +1,6 @@
 from napari import Viewer
 from napari.types import LayerDataTuple, PointsData, TracksData
+from napari.layers import Image
 from magicgui import magicgui
 from tifffile import imread, TiffFile
 from skimage.filters import gaussian
@@ -94,6 +95,12 @@ def flag_min_dist(df, min_dst):
 
 
 #### Helper functions (napari layers)
+
+def viewer_reset(vw: Viewer):
+
+    for name in [layer.name for layer in vw.layers if not isinstance(layer, Image)]:
+        vw.layers.remove(name)
+    vw.layers.clear()
 
 # Check if a layer with a specific name exists
 def viewer_is_layer(vw: Viewer, layername):

@@ -26,9 +26,9 @@ tp.quiet()
           skiplast={'widget_type': 'IntSlider', 'max': 50, 'tooltip': 'Skip the last N frame(s) when loading the image'})
 def load_images_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, proteins=proteins, time_step=frame_timestep, skipfirst=skipfirst, skiplast=skiplast):
 
-    if path.isfile(imagepath) and str(imagepath).endswith('.tif'):
+    viewer_reset(vw)
 
-        vw.layers.clear()
+    if path.isfile(imagepath) and str(imagepath).endswith('.tif'):
 
         with TiffFile(imagepath) as tif:
             num_pages = len(tif.pages)
@@ -36,13 +36,10 @@ def load_images_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, protei
 
         if path.isfile(imagepath2) and str(imagepath2).endswith('.tif'):
             img2 = imread(imagepath2, key=range(min(skipfirst, num_pages-1), max(1, num_pages-skiplast))).astype(np.uint16)
-            #img2_corr = ((img2 + img2[0, :, :].max() + 1) - gaussian(img2[0, :, :], sigma=5, preserve_range=True)).astype(np.uint16)
             if viewer_is_layer(vw, 'Channel2'):
                 vw.layers['Channel2'].data = img2
-                #vw.layers['Channel2_corr'].data = img2_corr
             else:
                 vw.add_image(img2, name='Channel2')
-                #vw.add_image(img2_corr, name='Channel2_corr')
             print(f'Loaded image {imagepath2} ({img2.shape})')
         else:
             print("C2 File doesn't exist or isn't a TIFF file")
@@ -51,6 +48,7 @@ def load_images_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, protei
         print(f'Loaded image {imagepath} ({img.shape})')
 
     else:
+
         print("C1 File doesn't exist or isn't a TIFF file")
 
     return None
@@ -101,6 +99,8 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
 
         dialogboxmes('Error', 'Load an image first!')
 
+        return None
+
 #### Particle Trackers
 
 ## TrackPy + parametric filter
@@ -109,8 +109,8 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
           max_spot_mean_scale={'widget_type': 'FloatSlider', 'min': 1, 'max': 2.5, 'tooltip': 'Track maximum mean spot scale (pixels)'},
           search_range={'widget_type': 'IntSlider', 'min': 1, 'max': 5, 'tooltip': 'Spot search range (pixels)'},
           max_gap={'widget_type': 'IntSlider', 'max': 20, 'tooltip': 'Track maximum gap (frames)'},
-          min_duration={'widget_type': 'IntSlider', 'min': 10, 'max': 300, 'tooltip': 'Track minimum duration (frames)'},
-          max_duration={'widget_type': 'IntSlider', 'min': 10, 'max': 300, 'tooltip': 'Track maximum duration (frames)'},
+          min_duration={'widget_type': 'IntSlider', 'min': 3, 'max': 50, 'tooltip': 'Track minimum duration (frames)'},
+          max_duration={'widget_type': 'IntSlider', 'min': 50, 'max': 500, 'tooltip': 'Track maximum duration (frames)'},
           min_length={'widget_type': 'FloatSlider', 'max': 5, 'tooltip': 'Track minimum accumulated length (pixels)'},
           max_mean_speed={'widget_type': 'FloatSlider', 'max': 5, 'tooltip': 'Track maximum average speed (pixels/frame)'})
 def track_spots_trackpy(vw: Viewer, max_spot_mean_scale = 1.33, search_range=2, max_gap=15, min_duration=35, max_duration=250, min_length=0, max_mean_speed=0.2) -> LayerDataTuple:
@@ -132,7 +132,8 @@ def track_spots_trackpy(vw: Viewer, max_spot_mean_scale = 1.33, search_range=2, 
             duration = df['frame'].iloc[-1]-df['frame'].iloc[0]+1
             length = np.sqrt(df['x'].diff()**2+df['y'].diff()**2).sum()
             scale = df['scale'].mean()
-            if (duration >= min_duration and duration <= max_duration and length/duration <= max_mean_speed and length >= min_length and scale <= max_spot_mean_scale):
+            if (min_duration <= duration <= max_duration and length/duration <= max_mean_speed
+                    and length >= min_length and scale <= max_spot_mean_scale):
                 trajectories_flt = pd.concat([trajectories_flt, df]).astype(float)
                 tracks_kept += 1
             tracks_total += 1
@@ -146,7 +147,11 @@ def track_spots_trackpy(vw: Viewer, max_spot_mean_scale = 1.33, search_range=2, 
                 {'name': 'Tracks', 'head_length': 0, 'tail_length': 999, 'tail_width': 3}, 'tracks')
 
     else:
+
         dialogboxmes('Error', 'Detect blobs first!')
+
+        return None
+
 
 #### Track Analysis
 
@@ -202,7 +207,8 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=50, mi
           outer = (diskout['mean']*diskout['area']-diskin['mean']*diskin['area'])/(diskout['area']-diskin['area'])
           contrast = np.clip((diskin['mean'].mean()/outer.mean())-1, 1e-9, 1)
 
-          if ((first_frame >= min_startframe and last_frame <= (img.shape[0]-min_afterframe-1)) and dst_flags[cnt_tracks] and contrast >= min_c1_contrast):
+          if ((first_frame >= min_startframe and last_frame <= (img.shape[0]-min_afterframe-1))
+                  and dst_flags[cnt_tracks] and contrast >= min_c1_contrast):
 
               tracks_kept = pd.concat([tracks_kept, df])
 
@@ -319,4 +325,7 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=50, mi
               {'name': 'ValidBlobs', 'size': int(np.round(5*spot_rad)), 'border_color': border_colors, 'face_color': 'transparent'}, 'points')
 
   else:
+
       dialogboxmes('Error', 'Track blobs first!')
+
+      return None

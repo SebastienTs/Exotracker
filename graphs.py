@@ -1,5 +1,4 @@
 import re
-import math
 import pickle
 import numpy as np
 import pandas as pd
@@ -204,7 +203,8 @@ def trinity_exporter(tracks_props, tracks_c2_times, exclude_earlyc2, exportpath,
                 span = match.span()
                 temp_str2 = protein2[span[0]+1:span[1]-2]
 
-            if (protein1.replace(temp_str1, tempref_str1) == proteinref1 and protein2.replace(temp_str2, tempref_str2) == proteinref2 and tracks_props[key]['ch2_positive'] == 1):
+            if (protein1.replace(temp_str1, tempref_str1) == proteinref1 and protein2.replace(temp_str2, tempref_str2) == proteinref2
+                    and tracks_props[key]['ch2_positive'] == 1):
 
                 start_c1 = 0
                 lgth_c1 = tracks_props[key]['length']
@@ -213,7 +213,7 @@ def trinity_exporter(tracks_props, tracks_c2_times, exclude_earlyc2, exportpath,
                 end_c2 = (trck_times[1]-tracks_props[key]['int_preframe'])
                 lgth_c2 = trck_times[2]
 
-                if  (start_c2>start_c1 and end_c2>end_c1) or not exclude_earlyc2:
+                if  end_c2>=end_c1 or not exclude_earlyc2:
                     ALL_EXO = max(end_c1, end_c2) - min(start_c1, start_c2)
                     ALL_C1 = lgth_c1
                     ALL_C2 = lgth_c2
@@ -263,11 +263,12 @@ def trinity_exporter(tracks_props, tracks_c2_times, exclude_earlyc2, exportpath,
             print(f'Number of non early C2 tracks dropped: {dropped}')
             print('Number of tracks exported for each temperature points:')
             print(df_ALL_EXO.count(axis=0))
+            graph_tracks.call_button.text = f'{df_ALL_EXO.count().sum()} Tracks exported ({dropped} dropped)'
 
     else:
         print('Temperatures of C1 and C2 proteins do not match!')
 
-@magicgui(call_button='Plot',
+@magicgui(call_button='Process',
           groupfiles={'widget_type': 'Checkbox', 'tooltip': 'Process all results from current image folder(s) and group by protein conditions'},
           model={'widget_type': 'Checkbox', 'tooltip': 'Model C2 tracks intensity profiles', 'visible': False},
           plot_intensity_profiles={'widget_type': 'Checkbox', 'tooltip': 'Plot intensity profiles for current file(s) and protein conditions'},
@@ -276,10 +277,10 @@ def trinity_exporter(tracks_props, tracks_c2_times, exclude_earlyc2, exportpath,
           plot_average_intensity_profile={'widget_type': 'Checkbox', 'tooltip': 'Plot average intensity profile for current file(s) and protein conditions'},
           intnorm={'widget_type': 'Checkbox', 'tooltip': 'Normalize intensity'},
           plot_timelines={'widget_type': 'Checkbox', 'tooltip': 'Plot timelines'},
-          export_trinity={'widget_type': 'Checkbox', 'tooltip': 'Export colocalized track lengths to Trinity format'},
-          exclude_earlyc2={'widget_type': 'Checkbox', 'tooltip': 'Exclude C2 tracks not starting after C1'})
+          export_to_trinity={'widget_type': 'Checkbox', 'tooltip': 'Export C1 and C2 track lengths to Trinity format'},
+          exclude_earlyc2={'widget_type': 'Checkbox', 'tooltip': 'Exclude C2 tracks ending before C1 tracks'})
 def graph_tracks(groupfiles=False, model=False, plot_intensity_profiles=False, plot_first_trck=1, plot_last_trck=25,
-                 plot_average_intensity_profile=True, intnorm=True, plot_timelines=False, export_trinity=False, exclude_earlyc2=True):
+                 plot_average_intensity_profile=True, intnorm=True, plot_timelines=False, export_to_trinity=False, exclude_earlyc2=True):
 
     # Proteins of the current dataset
     proteins_str = load_images_tiff.proteins.value
@@ -360,11 +361,13 @@ def graph_tracks(groupfiles=False, model=False, plot_intensity_profiles=False, p
             # Call plotting function
             plot_tracks_timelines(data_list, proteins=proteins)
 
-        if export_trinity:
+        if export_to_trinity:
             exportpath = path.dirname(load_images_tiff.imagepath.value)+'/Trinity/'
             if not path.exists(exportpath):
                 makedirs(exportpath)
             trinity_exporter(tracks_props, tracks_c2_times, exclude_earlyc2, exportpath, proteins=proteins)
+        else:
+            graph_tracks.call_button.text = 'Process'
 
     else:
         print('No file to process!')

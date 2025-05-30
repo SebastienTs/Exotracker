@@ -1,7 +1,7 @@
 # Default file names and metadata
-filename = 'D:/Projects/UPF/Oblique_exo84_sec9/img1_Uva-30C-exo84_C1.tif'
-filename2 = 'D:/Projects/UPF/Oblique_exo84_sec9/img1_Uva-30C-sec9_C2.tif'
-skipfirst, skiplast = 25, 25                    # Exclude first/last N frame(s) from time-lapses
+filename = 'D:\Projects/UPF/Live_exo84_sec9/Oblique/Mixed_temps/Test_5x5_30C_C1.tif'
+filename2 = 'D:\Projects/UPF/Live_exo84_sec9/Oblique/Mixed_temps/Test_5x5_30C_C2.tif'
+skipfirst, skiplast = 10, 15                    # Exclude first/last N frame(s) from time-lapses
 frame_timestep = 0.123                          # Frame duration (s)
 proteins=['uva-30C-exo84', 'uva-30C-sec9']      # C1/C2 experimental conditions & proteins
 
