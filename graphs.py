@@ -51,6 +51,7 @@ def  plot_tracks_intensity(tracks_props, tracks_c2_times, proteins, first_trck, 
     for key, value in list(tracks_props.items())[:]:
         if tracks_props[key]['protein1'] == proteins[0] and tracks_props[key]['protein2'] == proteins[1] and tracks_props[key]['ch2_positive'] == 1:
             if first_trck <= cnt <= last_trck:
+                track = tracks_props[key]['track']
                 int_preframe = tracks_props[key]['int_preframe']
                 int_postframe = tracks_props[key]['int_postframe']
                 # Median filter
@@ -73,7 +74,8 @@ def  plot_tracks_intensity(tracks_props, tracks_c2_times, proteins, first_trck, 
                 plt.plot(int_c2, color='green')
                 #plt.plot(ctr_c2, color='blue')
                 plt.grid()
-                plt.title(f'C2 Track {cnt} from {proteins[1]}')
+                xstart, ystart, fstart = track.iloc[0]['x'], track.iloc[0]['y'], track.iloc[0]['frame']
+                plt.title(f'C2 Track {cnt} (T: {int(fstart-1)}, Y: {int(ystart)}, X: {int(xstart)})')
             cnt += 1
     tile_windows(300, 200)
     plt.show(block=False)
@@ -280,7 +282,8 @@ def trinity_exporter(tracks_props, tracks_c2_times, exclude_earlyc2, exportpath,
           export_to_trinity={'widget_type': 'Checkbox', 'tooltip': 'Export C1 and C2 track lengths to Trinity format'},
           exclude_earlyc2={'widget_type': 'Checkbox', 'tooltip': 'Exclude C2 tracks ending before C1 tracks'})
 def graph_tracks(groupfiles=False, model=False, plot_intensity_profiles=False, plot_first_trck=1, plot_last_trck=25,
-                 plot_average_intensity_profile=True, intnorm=True, plot_timelines=False, export_to_trinity=False, exclude_earlyc2=True):
+                 plot_average_intensity_profile=True, intnorm=True, plot_timelines=False, export_to_trinity=False,
+                 exclude_earlyc2=True):
 
     # Proteins of the current dataset
     proteins_str = load_images_tiff.proteins.value

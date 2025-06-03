@@ -60,7 +60,7 @@ def load_images_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, protei
 
 @magicgui(call_button='Detect',
           spot_rad={'widget_type': 'FloatSlider', 'min': 1, 'max': 3, 'tooltip': 'Spot detection scale (pixels)'},
-          detect_thr={'widget_type': 'FloatSlider', 'min': 0.1, 'max': 0.5, 'tooltip': 'Spot detection sensitivity threshold'})
+          detect_thr={'widget_type': 'FloatSlider', 'min': 0.1, 'max': 1, 'tooltip': 'Spot detection sensitivity threshold'})
 def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple:
 
     if viewer_is_layer(vw, 'Channel1'):
