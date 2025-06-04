@@ -81,11 +81,13 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
           # Keep only valid blobs (<= maximum scale and far from edges) + split spot coordinates / scales
           stats = disk_int_stats(img, coords, 3*spot_rad)
           blb_coords_scales_kept = [(coords[i, :], blob[-1]) for i, blob in enumerate(blobs) if blob[-1] <= spot_rad and stats['min'][i] >= 1]
-          blb_kept_coords, blb_kept_scales = zip(*blb_coords_scales_kept)
 
-          # Accumulate blobs from this frame to list
-          blb_lst = blb_lst + list(blb_kept_coords)
-          blb_scales = blb_scales + list(blb_kept_scales)
+          if blb_coords_scales_kept:
+            blb_kept_coords, blb_kept_scales = zip(*blb_coords_scales_kept)
+
+            # Accumulate blobs from this frame to list
+            blb_lst = blb_lst + list(blb_kept_coords)
+            blb_scales = blb_scales + list(blb_kept_scales)
 
         # Display blob count
         print(f'Detected {len(blb_lst)} spots ({np.round(len(blb_lst)/img.shape[0])}/frame)')
