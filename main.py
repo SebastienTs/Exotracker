@@ -18,6 +18,7 @@ graph_tracks.plot_average_intensity_profile.native.setStyleSheet("color: violet;
 graph_tracks.native.setStyleSheet("background-color: #202020")
 graph_tracks.export_to_trinity.native.setStyleSheet("color: violet;")
 graph_tracks.exclude_earlyc2.native.setStyleSheet("padding-left: 40px;")
+graph_tracks.median_start_end.native.setStyleSheet("padding-left: 40px;")
 graph_tracks.call_button.native.setStyleSheet("""QPushButton {background-color: #002200;color: white;}QPushButton:hover {background-color: #66bb6a;}""")
 dw5 = viewer.window.add_dock_widget(graph_tracks, area='right', name='Plot Data', tabify=False)
 viewer.window._qt_window.tabifyDockWidget(dw4, dw5)

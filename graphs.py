@@ -85,7 +85,10 @@ def  plot_tracks_intensity(tracks_props, tracks_c2_times, proteins, first_trck, 
 def plot_tracks_avg_intensity(tracks_props, proteins, medrad, int_norm):
 
     # C1 track intensity profile is resampled to a vector of fixed size (rsplgth)
-    # C2 buffer is larger to accomodate a shift (rspgth) and pre-/post- frames (assumed not exceeding 3x C1 track length)
+    # Besides C1 track length, C2 buffer is dimensioned to accomodate the pre-frames and post-frames
+    # Calling N the minimum C1 track duration:
+    # - The number of pre-frames shouldn't exceed N
+    # - The number of post-frames shouldn't exceed 2xN
     rsplgth = 256
     arr_int_c1 = np.full((int(1*rsplgth), len(tracks_props)), np.nan)
     arr_int_c2 = np.full((int(4*rsplgth), len(tracks_props)), np.nan)
@@ -99,8 +102,8 @@ def plot_tracks_avg_intensity(tracks_props, proteins, medrad, int_norm):
             c1_lgth = len(int_c1)
             c2_lgth = len(int_c2)
             # Median filter intensity profiles
-            int_c1 = medfilt(int_c1, kernel_size=2*medrad+1)
-            int_c2 = medfilt(int_c2, kernel_size=2*medrad+1)
+            int_c1 = medfilt(int_c1, kernel_size=5)
+            int_c2 = medfilt(int_c2, kernel_size=5)
             # Normalize intensity profiles
             if int_norm:
                 int_c1 = (int_c1-min(int_c1))/(max(int_c1)-min(int_c1))
@@ -139,16 +142,22 @@ def plot_tracks_avg_intensity(tracks_props, proteins, medrad, int_norm):
 
 
 # Plot proteins timelines (mean start/end + std)
-def plot_tracks_timelines(data_list, proteins):
+def plot_tracks_timelines(data_list, proteins, use_median):
     cols = ['red', 'green', 'blue', 'orange', 'pink', 'cyan', 'yellow']
     n = len(data_list)
     figsize = (6,3*n)
     fig, ax = plt.subplots(1, 1, figsize=figsize, sharex=True)
     for i, data in enumerate(data_list):
         # Compute average +std track start / end
-        start = np.mean(data[0])
+        if use_median:
+            start = np.median(data[0])
+        else:
+            start = np.mean(data[0])
         start_std = np.std(data[0])
-        end = np.mean(data[1])
+        if use_median:
+            end = np.median(data[1])
+        else:
+            end = np.mean(data[1])
         end_std = np.std(data[1])
         if i==0:
             startref = start
@@ -171,7 +180,7 @@ def plot_tracks_timelines(data_list, proteins):
     plt.title('Track timelines')
     plt.show(block=False)
 
-def trinity_exporter(tracks_props, tracks_c2_times, exclude_earlyc2, exportpath, proteins):
+def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
 
     print('---- Trinity Exporter ----')
 
@@ -215,7 +224,7 @@ def trinity_exporter(tracks_props, tracks_c2_times, exclude_earlyc2, exportpath,
                 end_c2 = (trck_times[1]-tracks_props[key]['int_preframe'])
                 lgth_c2 = trck_times[2]
 
-                if  end_c2>=end_c1 or not exclude_earlyc2:
+                if  end_c2>=end_c1:
                     ALL_EXO = max(end_c1, end_c2) - min(start_c1, start_c2)
                     ALL_C1 = lgth_c1
                     ALL_C2 = lgth_c2
@@ -279,11 +288,11 @@ def trinity_exporter(tracks_props, tracks_c2_times, exclude_earlyc2, exportpath,
           plot_average_intensity_profile={'widget_type': 'Checkbox', 'tooltip': 'Plot average intensity profile for current file(s) and protein conditions'},
           intnorm={'widget_type': 'Checkbox', 'tooltip': 'Normalize intensity'},
           plot_timelines={'widget_type': 'Checkbox', 'tooltip': 'Plot timelines'},
-          export_to_trinity={'widget_type': 'Checkbox', 'tooltip': 'Export C1 and C2 track lengths to Trinity format'},
-          exclude_earlyc2={'widget_type': 'Checkbox', 'tooltip': 'Exclude C2 tracks ending before C1 tracks'})
+          median_start_end={'widget_type': 'Checkbox', 'tooltip': 'Use median instead of mean for C2 starts/ends'},
+          export_to_trinity={'widget_type': 'Checkbox', 'tooltip': 'Export C1 and C2 track lengths to Trinity format'})
 def graph_tracks(groupfiles=False, model=False, plot_intensity_profiles=False, plot_first_trck=1, plot_last_trck=25,
-                 plot_average_intensity_profile=True, intnorm=True, plot_timelines=False, export_to_trinity=False,
-                 exclude_earlyc2=True):
+                 plot_average_intensity_profile=True, intnorm=True, plot_timelines=False, median_start_end=False,
+                 export_to_trinity=False):
 
     # Proteins of the current dataset
     proteins_str = load_images_tiff.proteins.value
@@ -362,13 +371,13 @@ def graph_tracks(groupfiles=False, model=False, plot_intensity_profiles=False, p
                     proteins.append(protein2)
 
             # Call plotting function
-            plot_tracks_timelines(data_list, proteins=proteins)
+            plot_tracks_timelines(data_list, proteins=proteins, use_median=median_start_end)
 
         if export_to_trinity:
             exportpath = path.dirname(load_images_tiff.imagepath.value)+'/Trinity/'
             if not path.exists(exportpath):
                 makedirs(exportpath)
-            trinity_exporter(tracks_props, tracks_c2_times, exclude_earlyc2, exportpath, proteins=proteins)
+            trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins=proteins)
         else:
             graph_tracks.call_button.text = 'Process'
 
