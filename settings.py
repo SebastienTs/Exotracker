@@ -1,12 +1,18 @@
 # Default file names and metadata
-filename = 'D:\Projects/UPF/Live_exo84_sec9/Oblique/_TestImages/Test_2x2_pre_C1.tif'
-filename2 = 'D:\Projects/UPF/Live_exo84_sec9/Oblique/_TestImages/Test_2x2_pre_C2.tif'
+#filename = 'D:\Projects/UPF/Live_exo84_sec9/Oblique/All_Conditions/Su_Sec9/15C/5_Montaged/Montaged_2x2_C1.tif'
+#filename2 = 'D:\Projects/UPF/Live_exo84_sec9/Oblique/All_Conditions/Su_Sec9/15C/5_Montaged/Montaged_2x2_C2.tif'
+filename = 'D:/Projects/UPF/Live_exo84_sec9/Oblique/_TestImages/Test_2x2_pre_C1.tif'
+filename2 = 'D:/Projects/UPF/Live_exo84_sec9/Oblique/_TestImages/Test_2x2_pre_C2.tif'
+#filename = 'D:/Projects/UPF/Live_exo84_sec9/Oblique/Su_30C_Sec9/5_Montage/Montage_preprocessed_C1_01_10.tif'
+#filename2 = 'D:/Projects/UPF/Live_exo84_sec9/Oblique/Su_30C_Sec9/5_Montage/Montage_preprocessed_C2_01_10.tif'
+#filename = 'D:\Projects/UPF/Live_exo84_sec9/Oblique/_TestImages/Mixed_temps/Dummy_C1.tif'
+#filename2 = 'D:\Projects/UPF/Live_exo84_sec9/Oblique/_TestImages/Mixed_temps/Dummy_C2.tif'
 skipfirst, skiplast = 10, 15                    # Exclude first/last N frame(s) from time-lapses
 frame_timestep = 0.123                          # Frame duration (s)
 proteins=['uva-30C-exo84', 'uva-30C-sec9']      # C1/C2 experimental conditions & proteins
 
 # Plotting
-mx_prefrc, mx_postfrc = 0.5, 0.5                # C1 norm. time displayed before/after C1 track (average intensity plot)
+mx_prefrc, mx_postfrc = 1, 1                    # C1 norm. time displayed before/after C1 track (average intensity plot)
 color_codes = ['red', 'yellow', 'green']        # Exocytosis annotation colors: C2-, future C2+, current C2+
 
 #### Nomenclature

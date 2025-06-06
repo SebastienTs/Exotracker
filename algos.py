@@ -209,7 +209,6 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=10, min_afterframe=20, mi
       for i, df in trajectories.groupby('particle', as_index=False):
 
           # Temporal information
-          lgth = len(df)
           first_frame = df['frame'].iloc[0]
           last_frame = df['frame'].iloc[-1]
 
@@ -228,9 +227,9 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=10, min_afterframe=20, mi
               tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'protein1', proteins[0])
               tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ch1_int', list(np.round(diskin['mean'], decimals=1)))
               tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'track', df)
-              tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'length', lgth)
+              tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'length', len(df))
               tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'frame_timestep', load_images_tiff.time_step.value)
-
+              tracks_kept_props = acc_dict(tracks_kept_props, int(df['particle'].iloc[0]), 'ignore_track', 0)
               cnt_kept += 1
 
           cnt_tracks += 1
@@ -251,7 +250,7 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=10, min_afterframe=20, mi
           for i, df in tracks_kept.groupby('particle', as_index=False):
 
             # Extend track for C1/C2 pre- and post- intensity analysis (at first/last particle location)
-            lgth = len(df)
+            lgth_C1 = len(df)
             df = df.reset_index(drop=True)
             df = extend_dataframe_frames_post(df, min_afterframe)
             df = extend_dataframe_frames_pre(df, min_startframe)
@@ -295,16 +294,16 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=10, min_afterframe=20, mi
                     cnt_endcrop += 1
 
                 # Color-code C1 blobs according to C2 positiveness
-                lgth_negative = min(max(start-min_startframe, 0), lgth)
+                lgth_negative = min(max(start-min_startframe, 0), lgth_C1)
                 colors = np.concatenate((colors, np.ones(lgth_negative, dtype=int)))
-                lgth_positive = max(min(trcklgth, lgth-lgth_negative), 0)
+                lgth_positive = max(min(trcklgth, lgth_C1-lgth_negative), 0)
                 colors = np.concatenate((colors, 2*np.ones(lgth_positive, dtype=int)))
-                lgth_remaining = max(lgth-lgth_negative-lgth_positive, 0)
+                lgth_remaining = max(lgth_C1-lgth_negative-lgth_positive, 0)
                 colors = np.concatenate((colors, np.ones(lgth_remaining, dtype=int)))
 
                 cnt_positive += 1
             else:
-                colors = np.concatenate((colors, np.zeros(lgth, dtype=int)))
+                colors = np.concatenate((colors, np.zeros(lgth_C1, dtype=int)))
 
           border_colors = [color_codes[color] for color in colors]
 
