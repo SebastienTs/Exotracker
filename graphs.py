@@ -40,6 +40,8 @@ def fit_plateaus(tracks_props, first_trck, last_trck):
 # Plot filtered intensity profiles of C1-C2 track pairs
 def  plot_tracks_intensity(tracks_props, tracks_c2_times, first_trck, last_trck, int_norm):
 
+    medrad = analyze_tracks_int_gate.track_c2_int_medrad.value
+
     # Plot loop
     cnt = 1
     for key, value in list(tracks_props.items())[:]:
@@ -48,9 +50,12 @@ def  plot_tracks_intensity(tracks_props, tracks_c2_times, first_trck, last_trck,
                 track = tracks_props[key]['track']
                 int_preframe = tracks_props[key]['int_preframe']
                 int_postframe = tracks_props[key]['int_postframe']
+                # Intensity profiles
+                int_c1 = np.array(tracks_props[key]['ch1_ext_int'])
+                int_c2 = np.array(tracks_props[key]['ch2_ext_int'])
                 # Median filter
-                int_c1 = medfilt(tracks_props[key]['ch1_ext_int'], kernel_size=5)
-                int_c2 = medfilt(tracks_props[key]['ch2_ext_int'], kernel_size=5)
+                int_c1 = medfilt(int_c1, kernel_size=2*medrad+1)
+                int_c2 = medfilt(int_c2, kernel_size=2*medrad+1)
                 # Normalize intensity
                 if int_norm:
                     int_c1 = (int_c1-min(int_c1))/(max(int_c1)-min(int_c1))
@@ -77,11 +82,11 @@ def  plot_tracks_intensity(tracks_props, tracks_c2_times, first_trck, last_trck,
 # Plot C1/C2 averaged intensity time profiles + std
 def plot_tracks_avg_intensity(tracks_props, proteins, int_norm):
 
-    # C1 track intensity profile is resampled to a vector of fixed size (rsplgth)
-    # Besides C1 track length, C2 buffer is dimensioned to accomodate the pre-frames and post-frames
-    # Calling N the minimum C1 track duration:
-    # - The number of pre-frames shouldn't exceed N
-    # - The number of post-frames shouldn't exceed 2xN
+    # C1 intensity profile is resampled to a fixed size vector arr_int_c1 (length rsplgth)
+    # C2 buffer is four times larger than C1 buffer to accomodate:
+    #   - pre-analysis (up to C1 duration by design since it cannot exceed min C1 duration)
+    #   - post-analysis (up to C1 duration for plotting)
+    #   - shift to align resampled intensity profiles due to pre-analysis (up to C1 duration by design)
     rsplgth = 256
     arr_int_c1 = np.full((int(1*rsplgth), len(tracks_props)), np.nan)
     arr_int_c2 = np.full((int(4*rsplgth), len(tracks_props)), np.nan)
@@ -96,8 +101,8 @@ def plot_tracks_avg_intensity(tracks_props, proteins, int_norm):
                 c1_lgth = len(int_c1)
                 c2_lgth = len(int_c2)
                 # Median filter intensity profiles
-                int_c1 = medfilt(int_c1, kernel_size=5)
-                int_c2 = medfilt(int_c2, kernel_size=5)
+                int_c1 = medfilt(int_c1, kernel_size=9)
+                int_c2 = medfilt(int_c2, kernel_size=9)
                 # Normalize intensity profiles
                 if int_norm:
                     int_c1 = (int_c1-min(int_c1))/(max(int_c1)-min(int_c1))
@@ -105,6 +110,8 @@ def plot_tracks_avg_intensity(tracks_props, proteins, int_norm):
                 # Resample intensity profiles so that C1 intensity profile has fixed length (rsplgth samples)
                 int_c1 = np.interp(np.linspace(0, 1, num=rsplgth), np.linspace(0, 1, num=c1_lgth), int_c1)
                 int_c2 = np.interp(np.linspace(0, 1, num=round(c2_lgth/c1_lgth*rsplgth)), np.linspace(0, 1, num=c2_lgth), int_c2)
+                # Crop resampled C2 intensity profile if it exceeds 3x C1 duration (pre + post up to C1 duration)
+                int_c2 = int_c2[0:min(len(int_c2), int(3*rsplgth))]
                 # Store C1 intensity profile to a matrix holding all the aligned profiles
                 arr_int_c1[:len(int_c1), cnt] = int_c1
                 # Store C2 intensity profile to a matrix holding all the aligned profiles (account for int_preframe shift)
@@ -151,25 +158,26 @@ def plot_tracks_timelines(data_list, proteins):
         start_std = np.std(data[0])
         end = np.mean(data[1])
         end_std = np.std(data[1])
+        lgths = np.array(data[1])-np.array(data[0])
         if i==0:
             startref = start
             endref = end
+            text = f'{np.mean(lgths):.1f} +/- {np.std(lgths):.1f}'
         if i>0:
-            print(f'{proteins[i]} mean track start shift: {start-startref:.2f} +/- {start_std:.2f}')
-            print(f'{proteins[i]} mean track end shift: {end-endref:.2f} +/- {end_std:.2f}')
+            text = f'{start-startref:.2f} +/- {start_std:.1f}\n{np.mean(lgths):.1f} +/- {np.std(lgths):.1f}\n{end-endref:.2f} +/- {end_std:.1f}'
         # Plot timelines
-        rect = Rectangle((start, n-1-i), end-start, 1, facecolor=cols[i%8], alpha=0.25, label=proteins[i]+f'(N = {len(data[0])})')
-        ax.add_patch(rect)
-        #rect = Rectangle((start-start_std, n-i-0.55), width=2*start_std, height=0.01, facecolor='black')
-        #ax.add_patch(rect)
-        #rect = Rectangle((end-end_std, n-i-0.45), width=2*end_std, height=0.01, facecolor='black')
-        #ax.add_patch(rect)
+        rectangle = Rectangle((start, n-1-i), end-start, 1, facecolor=cols[i%8], alpha=0.25, label=proteins[i]+f' (N = {len(data[0])})')
+        ax.add_patch(rectangle)
+        rx, ry = rectangle.get_xy()
+        cx = rx + rectangle.get_width()/2
+        cy = ry + rectangle.get_height()/2
+        ax.annotate(text, (cx, cy), color='black', weight='bold', fontsize=12, ha='center', va='center')
         ax.plot()
     plt.xlabel('Time (s)')
     plt.ylim(0, n)
     ax.yaxis.set_visible(False)
     plt.legend()
-    plt.title('Track timelines')
+    plt.title('Track Timelines (s)')
     plt.show(block=False)
 
 def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
@@ -253,12 +261,12 @@ def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
                 else:
                     df_COLOCALIZED.at[0, temp_str1] = COLOCALIZED
 
-        df_ALL_EXO.to_csv(exportpath+'temp_vs_track_S_UVARUM_ALL_EXO84_DURATION.csv', index=False, na_rep='')
-        df_ALL_C1.to_csv(exportpath+'temp_vs_track_S_UVARUM_ALL_C1_DURATION.csv', index=False, na_rep='')
-        df_ONLY_C1.to_csv(exportpath+'temp_vs_track_S_UVARUM_ONLY_C1_DURATION.csv', index=False, na_rep='')
-        df_ALL_C2.to_csv(exportpath+'temp_vs_track_S_UVARUM_ALL_C2_DURATION.csv', index=False, na_rep='')
-        df_ONLY_C2.to_csv(exportpath+'temp_vs_track_S_UVARUM_ONLY_C2_DURATION.csv', index=False, na_rep='')
-        df_COLOCALIZED.to_csv(exportpath+'temp_vs_track_S_UVARUM_COLOCALIZED_DURATION.csv', index=False, na_rep='')
+        df_ALL_EXO.to_csv(exportpath+'temp_vs_track_S_XXX_ALL_EXOCYST_DURATION.csv', index=False, na_rep='')
+        df_ALL_C1.to_csv(exportpath+'temp_vs_track_S_XXX_ALL_C1_DURATION.csv', index=False, na_rep='')
+        df_ONLY_C1.to_csv(exportpath+'temp_vs_track_S_XXX_ONLY_C1_DURATION.csv', index=False, na_rep='')
+        df_ALL_C2.to_csv(exportpath+'temp_vs_track_S_XXX_ALL_C2_DURATION.csv', index=False, na_rep='')
+        df_ONLY_C2.to_csv(exportpath+'temp_vs_track_S_XXX_ONLY_C2_DURATION.csv', index=False, na_rep='')
+        df_COLOCALIZED.to_csv(exportpath+'temp_vs_track_S_XXX_COLOCALIZED_DURATION.csv', index=False, na_rep='')
         print('Number of tracks exported for each temperature points:')
         print(df_ALL_EXO.count(axis=0))
         tracks_statistics.call_button.text = f'{df_ALL_EXO.count().sum()} Tracks exported'
@@ -268,12 +276,12 @@ def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
 
 
 @magicgui(call_button='Process',
-          plot_intensity_profiles={'widget_type': 'Checkbox', 'tooltip': 'Plot intensity profiles for current file(s) and protein conditions'},
-          model_C2={'widget_type': 'Checkbox', 'tooltip': 'Model C2 tracks intensity profiles'},
-          plot_first_trck={'widget_type': 'IntSlider', 'min': 1, 'max': 250, 'tooltip': 'First track to plot', 'label': ' '},
-          plot_last_trck={'widget_type': 'IntSlider', 'min': 1, 'max': 250, 'tooltip': 'Last track to plot', 'label': ' '},
-          write_ignore_tracks={'widget_type': 'Checkbox', 'tooltip': 'Flag ignored tracks in pkl file (IDs in CSV file with same name but txt extension)'})
-def curate_tracks(plot_intensity_profiles=True, model_C2=False, plot_first_trck=1, plot_last_trck=25, write_ignore_tracks=False):
+          plot_intensity_profiles={'widget_type': 'Checkbox', 'tooltip': 'Plot C1/C2 intensity profiles (median filtered)'},
+          model_C2_track={'widget_type': 'Checkbox', 'tooltip': 'Fit a dual plateau function to C2 intensity profiles'},
+          plot_first_trck={'widget_type': 'IntSlider', 'min': 1, 'max': 250, 'tooltip': 'First C2+ track to plot', 'label': ' '},
+          plot_last_trck={'widget_type': 'IntSlider', 'min': 1, 'max': 250, 'tooltip': 'Last C2+ track to plot', 'label': ' '},
+          write_ignore_tracks={'widget_type': 'Checkbox', 'tooltip': 'Flag tracks to ignore in pkl file (Tracks IDs read from .txt file with same name as .pkl file)'})
+def curate_tracks(plot_intensity_profiles=True, model_C2_track=False, plot_first_trck=1, plot_last_trck=25, write_ignore_tracks=False):
 
     # Close all plots
     plt.close('all')
@@ -308,16 +316,16 @@ def curate_tracks(plot_intensity_profiles=True, model_C2=False, plot_first_trck=
 
     if plot_intensity_profiles:
         plot_tracks_intensity(tracks_props, tracks_c2_times, first_trck=plot_first_trck, last_trck=plot_last_trck, int_norm=False)
-    if model_C2:
+    if model_C2_track:
         fit_plateaus(tracks_props, first_trck=plot_first_trck, last_trck=plot_last_trck)
 
 
 @magicgui(call_button='Process',
           groupfiles={'widget_type': 'Checkbox', 'tooltip': 'Process all files from current image folder(s)'},
-          plot_average_intensity_profile={'widget_type': 'Checkbox', 'tooltip': 'Plot average intensity profiles for selected protein conditions (magenta)'},
+          plot_average_intensity_profile={'widget_type': 'Checkbox', 'tooltip': 'Plot average intensity profiles for current protein conditions (magenta)'},
           intnorm={'widget_type': 'Checkbox', 'tooltip': 'Normalize intensity'},
           plot_timelines={'widget_type': 'Checkbox', 'tooltip': 'Plot track timelines and compute statistics'},
-          export_to_trinity={'widget_type': 'Checkbox', 'tooltip': 'Export track lengths to Trinity format'})
+          export_to_trinity={'widget_type': 'Checkbox', 'tooltip': 'Export to Trinity all available temperatures for current protein conditions (magenta)'})
 def tracks_statistics(groupfiles=False, plot_average_intensity_profile=True, intnorm=True, plot_timelines=False, export_to_trinity=False):
 
     # Proteins of the current dataset
@@ -380,12 +388,12 @@ def tracks_statistics(groupfiles=False, plot_average_intensity_profile=True, int
             print(f'Number of C2 positive C1 tracks used for statistics: {cnt} ({len(tracks_c2_times.items())-cnt} ignored)')
             for protein1 in proteins1:
                 if protein1 in lgths_c1:
-                    print(f'{protein1} mean track length: {np.mean(lgths_c1[protein1]):.2f} +/- {np.std(lgths_c1[protein1]):.2f} [range: {np.min(lgths_c1[protein1]):.2f} - {np.max(lgths_c1[protein1]):.2f}]')
+                    #print(f'{protein1} mean track length: {np.mean(lgths_c1[protein1]):.2f} +/- {np.std(lgths_c1[protein1]):.2f} [range: {np.min(lgths_c1[protein1]):.2f} - {np.max(lgths_c1[protein1]):.2f}]')
                     data_list.append([np.zeros_like(lgths_c1[protein1]), lgths_c1[protein1]])
                     proteins.append(protein1)
             for protein2 in proteins2:
                 if protein2 in lgths_c2:
-                    print(f'{protein2} mean track length: {np.mean(lgths_c2[protein2]):.2f} +/- {np.std(lgths_c2[protein2]):.2f} [range: {np.min(lgths_c2[protein2]):.2f} - {np.max(lgths_c2[protein2]):.2f}]')
+                    #print(f'{protein2} mean track length: {np.mean(lgths_c2[protein2]):.2f} +/- {np.std(lgths_c2[protein2]):.2f} [range: {np.min(lgths_c2[protein2]):.2f} - {np.max(lgths_c2[protein2]):.2f}]')
                     data_list.append([starts_c2[protein2], ends_c2[protein2]])
                     proteins.append(protein2)
 

@@ -43,15 +43,47 @@ def disk_int_stats(img, pts, rad):
         max_int[i] = np.max(img[coords[:, 0], coords[:, 1], coords[:, 2]])
   return {'min': min_int, 'mean': mean_int, 'max': max_int, 'area': len(offsets)}
 
+def hysteresis_burst_detector(int_profile, thresh_hi, thresh_lo):
+    bursts = []
+    in_burst = False
+    start = 0
+    for i, x in enumerate(int_profile):
+        if not in_burst and x >= thresh_hi:
+            in_burst = True
+            start = i
+        elif in_burst and x < thresh_lo:
+            in_burst = False
+            bursts.append((start, i, np.mean(int_profile[start:i])))
+    # Complete last burst if needed
+    if in_burst:
+        bursts.append((start, len(int_profile)-1, np.mean(int_profile[start:len(int_profile)-1])))
+    return bursts
 
-# Find the longest plateau above level thr in an intensity profile
-def estimate_track_lgth(int_profile, medrad, thr):
+# Median filter an intensity profile and return the longest/latest plateau above threshold
+def estimate_track_lgth(int_profile, medrad, thr, mode):
     vals = np.array(int_profile)
     vals_flt = medfilt(vals, kernel_size=2*medrad+1)
     vals_flt = (vals_flt-vals_flt.min())/(vals_flt.max()-vals_flt.min())
-    trck_flag = (vals_flt >= thr).astype(int)
-    start, end , lgth = longest_non_zero_sequence(trck_flag)
-    return int(start), int(end), int(lgth), vals_flt, trck_flag
+    bursts = hysteresis_burst_detector(vals_flt, thr, thr)
+    if mode[0] == 'last':
+        start, end, mean = bursts[-1]
+    if mode[0] == 'longest':
+        longest = 0
+        stcroped = 0
+        for i, burst in enumerate(bursts):
+            st, en, _ = burst
+            if en-st > longest or stcroped:
+                start, end, mean = burst
+                longest = en-st
+                stcroped = (start==0)
+    if mode[0] == 'highest':
+        highest = 0
+        for i, burst in enumerate(bursts):
+            st, en, mn = burst
+            if mn > highest:
+                start, end, _ = burst
+                highest = mn
+    return int(start), int(end), int(end-start)
 
 #### Helper functions (track dataframes)
 
@@ -127,15 +159,6 @@ def acc_dict(dct, key, subkey, value):
         dct[key] = {}
     dct[key][subkey] = value
     return dct
-
-# Find the longest pulse of a binary sequence
-def longest_non_zero_sequence(v):
-    groups = [(k, len(list(g))) for k, g in groupby(v)]
-    if not groups or not any(k for k, _ in groups):
-        return 0, 0, 0
-    i, l = max(((i, l) for i, (k, l) in enumerate(groups) if k), key=lambda x: x[1])
-    st, ed = sum(g[1] for g in groups[:i]), sum(g[1] for g in groups[:i]) + l - 1
-    return st, ed, ed-st
 
 # Tile all opened matplotlib plots
 def tile_windows(wdth, hght):

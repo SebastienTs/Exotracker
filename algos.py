@@ -18,13 +18,14 @@ tp.quiet()
 
 ## TIFF images loader widget
 @magicgui(call_button='Load',
-          imagepath={'widget_type': 'FileEdit', 'label': 'Chan1', 'tooltip': 'Channel 1 image'},
-          imagepath2={'widget_type': 'FileEdit', 'label': 'Chan2', 'tooltip': 'Channel 2 image'},
-          proteins={'widget_type': 'LineEdit', 'tooltip': 'C1 and C2 proteins names'},
-          time_step={'widget_type': 'FloatSpinBox', 'step': 0.001, 'tooltip': 'Frame length (s)'},
-          skipfirst={'widget_type': 'IntSlider', 'max': 50, 'tooltip': 'Skip the first N frame(s) when loading the image'},
-          skiplast={'widget_type': 'IntSlider', 'max': 50, 'tooltip': 'Skip the last N frame(s) when loading the image'})
-def load_images_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, proteins=proteins, time_step=frame_timestep, skipfirst=skipfirst, skiplast=skiplast):
+          imagepath={'widget_type': 'FileEdit', 'label': 'channel 1', 'tooltip': 'Path to Channel 1 image'},
+          imagepath2={'widget_type': 'FileEdit', 'label': 'channel 2', 'tooltip': 'Path to Channel 2 image'},
+          proteins={'widget_type': 'LineEdit', 'tooltip': 'C1/C2 proteins [(strain-temp-protein),(strain-temp-protein)]'},
+          time_step={'widget_type': 'FloatSpinBox', 'step': 0.001, 'tooltip': 'Frame duration (s)'},
+          skipfirst={'widget_type': 'IntSlider', 'max': 50, 'tooltip': 'Do not load the first N frame(s)'},
+          skiplast={'widget_type': 'IntSlider', 'max': 50, 'tooltip': 'Do not load the last N frame(s)'})
+def load_images_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, proteins=proteins, time_step=frame_timestep,
+                     skipfirst=skipfirst, skiplast=skiplast):
 
     viewer_reset(vw)
 
@@ -60,7 +61,7 @@ def load_images_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, protei
 
 @magicgui(call_button='Detect',
           spot_rad={'widget_type': 'FloatSlider', 'min': 1, 'max': 3, 'tooltip': 'Spot detection scale (pixels)'},
-          detect_thr={'widget_type': 'FloatSlider', 'min': 0.1, 'max': 1, 'tooltip': 'Spot detection sensitivity threshold'})
+          detect_thr={'widget_type': 'FloatSlider', 'min': 0.1, 'max': 1, 'tooltip': 'Spot detection level'})
 def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple:
 
     if viewer_is_layer(vw, 'Channel1'):
@@ -109,14 +110,15 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
 ## TrackPy + parametric filter
 
 @magicgui(call_button='Track',
-          max_spot_mean_scale={'widget_type': 'FloatSlider', 'min': 1, 'max': 2.5, 'tooltip': 'Maximum track mean spot scale (pixels)'},
-          search_range={'widget_type': 'IntSlider', 'min': 1, 'max': 5, 'tooltip': 'Spot search range (pixels)'},
-          max_gap={'widget_type': 'IntSlider', 'max': 20, 'tooltip': 'Maximum track gap (frames)'},
+          spot_search_range={'widget_type': 'IntSlider', 'min': 1, 'max': 5, 'tooltip': 'Maximum spot displacement from frame to frame (pixels)'},
+          max_gap={'widget_type': 'IntSlider', 'max': 20, 'tooltip': 'Maximum gap duration (consecutive frames with a non detected spot)'},
           min_duration={'widget_type': 'IntSlider', 'min': 5, 'max': 50, 'tooltip': 'Minimum track duration (frames)'},
           max_duration={'widget_type': 'IntSlider', 'min': 50, 'max': 250, 'tooltip': 'Maximum track duration (frames)'},
           min_length={'widget_type': 'FloatSlider', 'max': 5, 'tooltip': 'Minimum track length (pixels)'},
-          max_mean_speed={'widget_type': 'FloatSlider', 'max': 5, 'tooltip': 'Maximum track average speed (pixels/frame)'})
-def track_spots_trackpy(vw: Viewer, max_spot_mean_scale = 1.33, search_range=2, max_gap=15, min_duration=35, max_duration=250, min_length=0, max_mean_speed=0.2) -> LayerDataTuple:
+          max_mean_speed={'widget_type': 'FloatSlider', 'max': 5, 'tooltip': 'Maximum track average speed (pixels/frame)'},
+          max_spot_mean_scale={'widget_type': 'FloatSlider', 'min': 1, 'max': 2.5, 'tooltip': 'Maximum spot scale (track average, pixels)'})
+def track_spots_trackpy(vw: Viewer, spot_search_range=2, max_gap=12, min_duration=25, max_duration=250,
+                        min_length=0, max_mean_speed=0.2, max_spot_mean_scale = 1.33,) -> LayerDataTuple:
 
     if viewer_is_layer(vw, 'Blobs'):
 
@@ -126,7 +128,7 @@ def track_spots_trackpy(vw: Viewer, max_spot_mean_scale = 1.33, search_range=2, 
 
         # Convert points to dataframe and track particles
         df = pd.DataFrame(np.column_stack((pts, scales)), columns=['frame', 'y', 'x', 'scale'])
-        trajectories = tp.link_df(df, search_range=search_range, memory=max_gap).sort_values(by=['particle', 'frame'])
+        trajectories = tp.link_df(df, search_range=spot_search_range, memory=max_gap).sort_values(by=['particle', 'frame'])
 
         # Filter tracks
         trajectories_flt = pd.DataFrame(columns=trajectories.columns)
@@ -160,25 +162,22 @@ def track_spots_trackpy(vw: Viewer, max_spot_mean_scale = 1.33, search_range=2, 
 
 ## Parametric Filter + C2 Intensity Gating
 
-@magicgui(call_button='Filter and Save Tracks',
-          min_startframe={'widget_type': 'IntSlider', 'max': 25, 'tooltip': 'Minimum track start frame (window used for C2 intensity analysis)'},
-          min_afterframe={'widget_type': 'IntSlider', 'max': 50, 'tooltip': 'Maximum track end before last frame (window used for C2 intensity analysis)'},
-          min_neighbor_dist={'widget_type': 'IntSlider', 'max': 10, 'tooltip': 'Minimum distance to closest point in any other track (pixels)'},
+@magicgui(call_button='Analyze and Save Tracks',
+          min_startframe={'widget_type': 'IntSlider', 'max': 100, 'tooltip': 'Minimum start frame (used for C2 pre-analysis)'},
+          min_afterframe={'widget_type': 'IntSlider', 'max': 100, 'tooltip': 'Maximum track end before last frame (used for C2 post-analysis)'},
+          min_neighbor_dist={'widget_type': 'IntSlider', 'max': 10, 'tooltip': 'Minimum distance to any other track from previous step (pixels)'},
           min_c1_contrast={'widget_type': 'FloatSlider', 'max': 0.5, 'step': 0.001, 'tooltip': 'C1 minimum average contrast'},
-          min_c2_contrast_delta={'widget_type': 'FloatSlider', 'max': 0.5, 'step': 0.001, 'tooltip': 'C2 minimum contrast variation'},
-          track_c2_int_medrad={'widget_type': 'IntSlider', 'min': 1, 'max': 9, 'tooltip': 'C2 track detection median filter window half length'},
-          track_c2_int_thr={'widget_type': 'FloatSlider', 'min': 0.25, 'max': 0.5, 'step': 0.01, 'tooltip': 'C2 track detection normalized intensity threshold'})
-def analyze_tracks_int_gate(vw: Viewer, min_startframe=10, min_afterframe=20, min_neighbor_dist=4, min_c1_contrast=0.26,
-                            min_c2_contrast_delta=0.15, track_c2_int_medrad=5, track_c2_int_thr=0.35) -> LayerDataTuple:
+          c2_mode={'widget_type': "Select", "choices": ["longest", "last", "highest"], 'label': 'C2 track detection mode','tooltip': 'Burst selection mode'},
+          min_c2_contrast_delta={'widget_type': 'FloatSlider', 'max': 0.5, 'step': 0.001, 'tooltip': 'C2 minimum contrast increase during analysis window'},
+          track_c2_int_medrad={'widget_type': 'IntSlider', 'min': 1, 'max': 9, 'tooltip': 'Half length of the median filter applied to C2 intensity profile'},
+          track_c2_int_thr={'widget_type': 'FloatSlider', 'min': 0.25, 'max': 0.5, 'step': 0.01, 'tooltip': 'C2 track detection intensity threshold (normalized)'})
+def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=75, min_neighbor_dist=4, min_c1_contrast=0.26,
+                            c2_mode='longest', min_c2_contrast_delta=0.16, track_c2_int_medrad=4, track_c2_int_thr=0.35) -> LayerDataTuple:
 
   if min_startframe > track_spots_trackpy.min_duration.value:
       analyze_tracks_int_gate.min_startframe.value = track_spots_trackpy.min_duration.value
       min_startframe = track_spots_trackpy.min_duration.value
       print('Minimum start frame cannot be larger than minimum track duration!')
-  if min_afterframe > 2*track_spots_trackpy.min_duration.value:
-      print('Minimum after frame cannot be larger than twice the minimum track duration!')
-      min_afterframe = 2*track_spots_trackpy.min_duration.value
-      analyze_tracks_int_gate.min_afterframe.value = 2*track_spots_trackpy.min_duration.value
 
   if viewer_is_layer(vw, 'Tracks') and viewer_is_layer(vw, 'Blobs'):
 
@@ -284,7 +283,7 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=10, min_afterframe=20, mi
 
                 # Estimate start, end and length of C2 track (from extended intensity profile)
                 c2_ext_int = tracks_kept_props[int(df['particle'].iloc[0])]['ch2_ext_int']
-                start, end, trcklgth, _, _ = estimate_track_lgth(c2_ext_int, track_c2_int_medrad, track_c2_int_thr)
+                start, end, trcklgth = estimate_track_lgth(c2_ext_int, track_c2_int_medrad, track_c2_int_thr, c2_mode)
                 tracks_chan2_times[int(df['particle'].iloc[0])] = [start, end, trcklgth]
 
                 # Check if track is cropped (start/end outside analysed interval)
@@ -314,7 +313,7 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=10, min_afterframe=20, mi
       # Display results summary
       print(f'Filtered C1 tracks (Total)      : {cnt_kept}')
       print(f'Filtered C1 tracks (C2 positive): {cnt_positive} (cropped start/stop: {cnt_startcrop}/{cnt_endcrop})')
-      analyze_tracks_int_gate.call_button.text = f'Filter Tracks ({cnt_positive}/{cnt_kept}/{cnt_tracks})'
+      analyze_tracks_int_gate.call_button.text = f'C2+/C1/All Tracks ({cnt_positive}/{cnt_kept}/{cnt_tracks})'
 
       # Hide Blobs and Tracks layers
       vw.layers['Blobs'].visible = False
