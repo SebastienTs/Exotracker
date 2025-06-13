@@ -1,3 +1,5 @@
+import tkinter as tk
+from tkinter import messagebox
 from pathlib import Path
 from os import chmod, path
 from napari import Viewer
@@ -13,6 +15,8 @@ import pickle
 from settings import color_codes
 from utils import *
 tp.quiet()
+root = tk.Tk()
+root.withdraw()
 
 #### Image loader
 
@@ -29,7 +33,7 @@ def load_images_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, protei
 
     viewer_reset(vw)
 
-    if path.isfile(imagepath) and str(imagepath).endswith('.tif'):
+    if path.isfile(imagepath) and str(imagepath).endswith('.tif') and path.isfile(imagepath2) and str(imagepath2).endswith('.tif'):
 
         with TiffFile(imagepath) as tif:
             num_pages = len(tif.pages)
@@ -50,7 +54,7 @@ def load_images_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, protei
 
     else:
 
-        print("C1 File doesn't exist or isn't a TIFF file")
+        messagebox.showwarning('Error', "The files don't exist or aren't TIFF files")
 
     return None
 
@@ -101,7 +105,7 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
                  'face_color': 'transparent', 'properties': {'scale': blb_scales}}, 'points')
     else:
 
-        dialogboxmes('Error', 'Load an image first!')
+        messagebox.showwarning('Error', 'Load an image first!')
 
         return None
 
@@ -153,7 +157,7 @@ def track_spots_trackpy(vw: Viewer, spot_search_range=2, max_gap=12, min_duratio
 
     else:
 
-        dialogboxmes('Error', 'Detect blobs first!')
+        messagebox.showwarning('Error', 'Detect blobs first!')
 
         return None
 
@@ -336,6 +340,6 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=75, mi
 
   else:
 
-      dialogboxmes('Error', 'Track blobs first!')
+      messagebox.showwarning('Error', 'Track blobs first!')
 
       return None
