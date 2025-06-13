@@ -1,5 +1,3 @@
-import tkinter as tk
-from tkinter import messagebox
 from pathlib import Path
 from os import chmod, path
 from napari import Viewer
@@ -15,8 +13,6 @@ import pickle
 from settings import color_codes
 from utils import *
 tp.quiet()
-root = tk.Tk()
-root.withdraw()
 
 #### Image loader
 
@@ -54,7 +50,7 @@ def load_images_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, protei
 
     else:
 
-        messagebox.showwarning('Error', "The files don't exist or aren't TIFF files")
+        print("Error: The files don't exist or aren't TIFF files")
 
     return None
 
@@ -105,7 +101,7 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
                  'face_color': 'transparent', 'properties': {'scale': blb_scales}}, 'points')
     else:
 
-        messagebox.showwarning('Error', 'Load an image first!')
+        print('Error: Load an image first!')
 
         return None
 
@@ -157,7 +153,7 @@ def track_spots_trackpy(vw: Viewer, spot_search_range=2, max_gap=12, min_duratio
 
     else:
 
-        messagebox.showwarning('Error', 'Detect blobs first!')
+        print('Error: Detect blobs first!')
 
         return None
 
@@ -340,6 +336,6 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=75, mi
 
   else:
 
-      messagebox.showwarning('Error', 'Track blobs first!')
+      print('Error: Track blobs first!')
 
       return None
