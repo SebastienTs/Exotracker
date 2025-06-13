@@ -167,12 +167,12 @@ def track_spots_trackpy(vw: Viewer, spot_search_range=2, max_gap=12, min_duratio
           min_afterframe={'widget_type': 'IntSlider', 'max': 100, 'tooltip': 'Maximum track end before last frame (used for C2 post-analysis)'},
           min_neighbor_dist={'widget_type': 'IntSlider', 'max': 10, 'tooltip': 'Minimum distance to any other track from previous step (pixels)'},
           min_c1_contrast={'widget_type': 'FloatSlider', 'max': 0.5, 'step': 0.001, 'tooltip': 'C1 minimum average contrast'},
-          c2_mode={'widget_type': "Select", "choices": ["longest", "last", "highest"], 'label': 'C2 track detection mode','tooltip': 'Burst selection mode'},
           min_c2_contrast_delta={'widget_type': 'FloatSlider', 'max': 0.5, 'step': 0.001, 'tooltip': 'C2 minimum contrast increase during analysis window'},
           track_c2_int_medrad={'widget_type': 'IntSlider', 'min': 1, 'max': 9, 'tooltip': 'Half length of the median filter applied to C2 intensity profile'},
-          track_c2_int_thr={'widget_type': 'FloatSlider', 'min': 0.25, 'max': 0.5, 'step': 0.01, 'tooltip': 'C2 track detection intensity threshold (normalized)'})
+          track_c2_int_thr={'widget_type': 'FloatSlider', 'min': 0.25, 'max': 0.5, 'step': 0.01, 'tooltip': 'C2 track detection intensity threshold (normalized)'},
+          c2_mode={'widget_type': "Select", "choices": ["longest", "highest"], 'label': 'C2 track detection mode','tooltip': 'Burst selection method (early croped burst ignored if multiple bursts found)'},)
 def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=75, min_neighbor_dist=4, min_c1_contrast=0.26,
-                            c2_mode='longest', min_c2_contrast_delta=0.16, track_c2_int_medrad=4, track_c2_int_thr=0.35) -> LayerDataTuple:
+                            min_c2_contrast_delta=0.16, track_c2_int_medrad=4, track_c2_int_thr=0.35, c2_mode='longest') -> LayerDataTuple:
 
   if min_startframe > track_spots_trackpy.min_duration.value:
       analyze_tracks_int_gate.min_startframe.value = track_spots_trackpy.min_duration.value

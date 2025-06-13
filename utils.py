@@ -65,8 +65,8 @@ def estimate_track_lgth(int_profile, medrad, thr, mode):
     vals_flt = medfilt(vals, kernel_size=2*medrad+1)
     vals_flt = (vals_flt-vals_flt.min())/(vals_flt.max()-vals_flt.min())
     bursts = hysteresis_burst_detector(vals_flt, thr, thr)
-    if mode[0] == 'last':
-        start, end, mean = bursts[-1]
+    #if mode[0] == 'last':
+    #    start, end, mean = bursts[-1]
     if mode[0] == 'longest':
         longest = 0
         stcroped = 0
@@ -78,11 +78,13 @@ def estimate_track_lgth(int_profile, medrad, thr, mode):
                 stcroped = (start==0)
     if mode[0] == 'highest':
         highest = 0
+        stcroped = 0
         for i, burst in enumerate(bursts):
             st, en, mn = burst
-            if mn > highest:
+            if mn > highest or stcroped:
                 start, end, _ = burst
                 highest = mn
+                stcroped = (start == 0)
     return int(start), int(end), int(end-start)
 
 #### Helper functions (track dataframes)
