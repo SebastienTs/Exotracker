@@ -1,6 +1,6 @@
 # Default file names and metadata
-filename = 'D:/Projects/UPF/Live_exo84_sec9/Oblique/_TestImages/Test_5x5_pre_C1.tif'
-filename2 = 'D:/Projects/UPF/Live_exo84_sec9/Oblique/_TestImages/Test_5x5_pre_C2.tif'
+filename = 'D:/Projects/UPF/Live_exo84_sec9/Oblique/_TestImages/Test_2x2_pre_C1.tif'
+filename2 = 'D:/Projects/UPF/Live_exo84_sec9/Oblique/_TestImages/Test_2x2_pre_C2.tif'
 skipfirst, skiplast = 0, 0                      # Don't load first/last N frame(s) from time-lapses
 frame_timestep = 0.123                          # Frame duration (s)
 proteins=['uva-30C-exo84', 'uva-30C-sec9']      # C1/C2 experimental conditions
