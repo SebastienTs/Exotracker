@@ -317,7 +317,7 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=75, mi
       # Display results summary
       print(f'Filtered C1 tracks (Total)      : {cnt_kept}')
       print(f'Filtered C1 tracks (C2+)        : {cnt_positive} (cropped start/stop: {cnt_startcrop}/{cnt_endcrop})')
-      analyze_tracks_int_gate.call_button.text = f'C1 (C2+)/C1/All ({cnt_positive}/{cnt_kept}/{cnt_tracks})'
+      analyze_tracks_int_gate.call_button.text = f'C2+/All_C1/All ({cnt_positive}/{cnt_kept}/{cnt_tracks})'
 
       # Hide Blobs and Tracks layers
       vw.layers['Blobs'].visible = False
