@@ -13,24 +13,32 @@ from algos import *
 warnings.filterwarnings("ignore")
 
 ## Fit a 2 up-step, 1 down-step logistic function to C2 intensity profiles
-def fit_plateaus(tracks_props, first_trck, last_trck):
+def fit_plateaus(tracks_props, first_trck, last_trck, nplateaus, steepness):
+
+    # Radius of rolling median filter used for C2 track detection
+    medrad = analyze_tracks_int_gate.track_c2_int_medrad.value
 
     # Plot loop
     cnt = 1
     for key, value in list(tracks_props.items())[:]:
         if tracks_props[key]['ch2_positive'] == 1:
-            if first_trck <= cnt <= last_trck:
-                plt.figure()
+            if first_trck <= cnt <= last_trck and tracks_props[key]['ignore_track'] == 0:
                 int_c2 = tracks_props[key]['ch2_ext_int']
-                int_c2 = (int_c2-min(int_c2))/(max(int_c2)-min(int_c2))
-                x = np.arange(0, len(int_c2))
-                popt, _ = curve_fit(model_logistic, x, int_c2, maxfev=1000, bounds=([0, 0, 0, 0, len(int_c2)*0.8, -1], [len(int_c2), 1, len(int_c2), 1, len(int_c2), 0]))
-                inds = np.argsort([popt[0], popt[2], popt[4]])
-                xpos = np.array([popt[0], popt[2], popt[4]])
-                xpos = np.round(xpos[inds]*100)/100
+                int_c2 = medfilt(int_c2, kernel_size=2*medrad+1)
+                int_c2 = (int_c2-min(int_c2))/(max(int_c2)-min(int_c2)).astype(np.float64)
+                x = np.arange(0, len(int_c2)).astype(np.float64)
+                model = make_logistic_combination(n=(2*nplateaus), steepness=steepness)
+                p0 = np.concatenate([np.tile([0.5, -0.5], nplateaus), np.linspace(0, len(int_c2), num=(2*nplateaus))])
+                lbounds =  np.concatenate([np.tile([0, -1], nplateaus), np.zeros(2*nplateaus)])
+                rbounds = np.concatenate([np.tile([1, 0], nplateaus), len(int_c2)*np.ones(2*nplateaus)])
+                # popt, _ = curve_fit(model, x, int_c2, maxfev=1000, p0=p0, bounds=(lbounds, rbounds), method='trf')
+                try:
+                    popt, _ = curve_fit(model, x, int_c2, maxfev=5000, p0=p0, bounds=(lbounds, rbounds), method='trf')
+                except RuntimeError as e:
+                     popt = np.array(p0)
+                plt.figure()
                 plt.plot(x, int_c2, label='Data')
-                plt.plot(x, model_logistic(x, *popt), 'r-', label='Fit')
-                plt.vlines(x=xpos, ymin=0, ymax=1, colors='green', linestyles='dashed')
+                plt.plot(x, model(x, *popt), 'r-', label='Fit')
                 plt.xlim(0, len(int_c2))
                 plt.title(f'C2 Track {cnt}')
             cnt += 1
@@ -40,6 +48,7 @@ def fit_plateaus(tracks_props, first_trck, last_trck):
 # Plot filtered intensity profiles of C1-C2 track pairs
 def  plot_tracks_intensity(tracks_props, tracks_c2_times, first_trck, last_trck, int_norm):
 
+    # Radius of rolling median filter used for C2 track detection
     medrad = analyze_tracks_int_gate.track_c2_int_medrad.value
 
     # Plot loop
@@ -277,11 +286,14 @@ def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
 
 @magicgui(call_button='Process',
           plot_intensity_profiles={'widget_type': 'Checkbox', 'tooltip': 'Plot C1/C2 intensity profiles (median filtered)'},
-          model_C2_track={'widget_type': 'Checkbox', 'tooltip': 'Fit a dual plateau function to C2 intensity profiles'},
           plot_first_trck={'widget_type': 'IntSlider', 'min': 1, 'max': 250, 'tooltip': 'First C2+ track to plot', 'label': ' '},
           plot_last_trck={'widget_type': 'IntSlider', 'min': 1, 'max': 250, 'tooltip': 'Last C2+ track to plot', 'label': ' '},
+          model_C2_track={'widget_type': 'Checkbox', 'tooltip': 'Fit a dual plateau function to C2 intensity profiles'},
+          nplateaus = {'widget_type': 'IntSlider', 'min': 1, 'max': 5, 'tooltip': 'Number of plateaus used for the function model'},
+          steepness = {'widget_type': 'FloatSlider', 'min': 0.05, 'max': 1, 'tooltip': 'Steepness of the plateaus'},
           write_ignore_tracks={'widget_type': 'Checkbox', 'tooltip': 'Flag tracks to ignore in pkl file (Tracks IDs read from .txt file with same name as .pkl file)'})
-def curate_tracks(plot_intensity_profiles=True, model_C2_track=False, plot_first_trck=1, plot_last_trck=25, write_ignore_tracks=False):
+def curate_tracks(plot_intensity_profiles=True, plot_first_trck=1, plot_last_trck=25, model_C2_track=False,
+                  nplateaus=4, steepness=1, write_ignore_tracks=False):
 
     # Close all plots
     plt.close('all')
@@ -317,7 +329,7 @@ def curate_tracks(plot_intensity_profiles=True, model_C2_track=False, plot_first
     if plot_intensity_profiles:
         plot_tracks_intensity(tracks_props, tracks_c2_times, first_trck=plot_first_trck, last_trck=plot_last_trck, int_norm=False)
     if model_C2_track:
-        fit_plateaus(tracks_props, first_trck=plot_first_trck, last_trck=plot_last_trck)
+        fit_plateaus(tracks_props, first_trck=plot_first_trck, last_trck=plot_last_trck, nplateaus=nplateaus, steepness=steepness)
 
 
 @magicgui(call_button='Process',

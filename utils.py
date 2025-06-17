@@ -168,20 +168,17 @@ def tile_windows(wdth, hght):
         mngr.window.setGeometry(i % cols * wdth,50 + i // cols * round(hght * 1.1), wdth, hght)
 
 
-#### Napari dialog box
+#### C2 Tracks modeling
 
-# Display message dialog box
-def dialogboxmes(message, title):
-    return ctypes.windll.user32.MessageBoxW(0, title, message, 0)
-
-
-#### Track measurements analysis and plots (graphs.py script only)
-
-# Normalized 0-centered logistic function
-def logistic(x, steepness=4):
-    return 1 / (1 + np.exp(-steepness*x))
-
-## Multi-logistic function
-def model_logistic(x, x1, h1, x2, h2, x3, h3):
-    result = h1*logistic(x-x1)+h2*logistic(x-x2)+h3*logistic(x-x3)
-    return result
+def make_logistic_combination(n, steepness=4):
+    def logistic_combination(x, *params):
+        if len(params) != 2 * n:
+            raise ValueError(f"Expected {2 * n} parameters (weights and centers), got {len(params)}")
+        weights = np.array(params[:n])
+        centers = np.array(params[n:])
+        x = np.asarray(x)
+        result = np.zeros_like(x)
+        for w, c in zip(weights, centers):
+            result += w * (1 / (1 + np.exp(-steepness * (x - c))))
+        return result
+    return logistic_combination

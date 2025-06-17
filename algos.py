@@ -120,7 +120,7 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
           max_mean_speed={'widget_type': 'FloatSlider', 'max': 5, 'tooltip': 'Maximum track average speed (pixels/frame)'},
           max_spot_mean_scale={'widget_type': 'FloatSlider', 'min': 1, 'max': 2.5, 'tooltip': 'Maximum track average spot scale (pixels)'})
 def track_spots_trackpy(vw: Viewer, spot_search_range=2, max_gap=10, min_duration=25, max_duration=250,
-                        min_length=0, max_mean_speed=0.2, max_spot_mean_scale = 1.33,) -> LayerDataTuple:
+                        min_length=0, max_mean_speed=0.3, max_spot_mean_scale = 1.33,) -> LayerDataTuple:
 
     if viewer_is_layer(vw, 'Blobs'):
 
@@ -325,7 +325,11 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=75, mi
 
       # Export results
       tracks_props_file = Path(load_images_tiff.imagepath.value).with_suffix('.pkl')
+      tracks_ignore_file = Path(load_images_tiff.imagepath.value).with_suffix('.txt')
       tracks_chan2_times_file = Path(load_images_tiff.imagepath2.value).with_suffix('.pkl')
+      if not path.exists(tracks_ignore_file):
+          with open(tracks_ignore_file, 'w') as file:
+              file.write("")
       with open(tracks_props_file, 'wb') as file:
           pickle.dump(tracks_kept_props, file)
           chmod(str(tracks_props_file), 0o666)
