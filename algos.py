@@ -6,6 +6,7 @@ from napari.layers import Tracks, Points, Layer
 from magicgui.tqdm import trange
 from magicgui import magicgui
 from skimage.feature import blob_dog as dog
+import matplotlib.pyplot as plt
 import trackpy as tp
 import pandas as pd
 import numpy as np
@@ -72,6 +73,7 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
         img = vw.layers['Channel1'].data
 
         # Detect blobs (frame by frame)
+        blb_frame_cnt = []
         blb_lst, blb_scales = [], []
         for t in trange(img.shape[0]):
 
@@ -84,6 +86,8 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
           # Keep only valid blobs (<= maximum scale and far from edges) + split spot coordinates / scales
           stats = disk_int_stats(img, coords, 3*spot_rad)
           blb_coords_scales_kept = [(coords[i, :], blob[-1]) for i, blob in enumerate(blobs) if blob[-1] <= spot_rad and stats['min'][i] >= 1]
+          blb_frame_cnt.append(len(blb_coords_scales_kept))
+          plt.plot(range(len(blb_frame_cnt)), blb_frame_cnt, 'r-')
 
           if blb_coords_scales_kept:
             blb_kept_coords, blb_kept_scales = zip(*blb_coords_scales_kept)
@@ -96,6 +100,8 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
         spot_avg_frame = np.round(10*len(blb_lst)/img.shape[0])/10
         print(f'Detected {len(blb_lst)} spots ({spot_avg_frame}/frame)')
         detect_spots_msdog.call_button.text = f'{len(blb_lst)} Spots ({spot_avg_frame}/frame)'
+        plt.title('Frame blob detection count')
+        plt.show(block=False)
 
         # Return napari point layer
         return ([blob[:3] for blob in blb_lst],
