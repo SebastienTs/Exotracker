@@ -13,7 +13,7 @@ from os import path, makedirs
 from algos import *
 warnings.filterwarnings("ignore")
 
-## Fit a 2 up-step, 1 down-step logistic function to C2 intensity profiles
+## Fit a linear combination of logistic functions to C2 intensity profiles
 def fit_plateaus(tracks_props, first_trck, last_trck, nplateaus, steepness):
 
     # Radius of rolling median filter used for C2 track detection
@@ -32,11 +32,10 @@ def fit_plateaus(tracks_props, first_trck, last_trck, nplateaus, steepness):
                 p0 = np.concatenate([np.tile([0.5, -0.5], nplateaus), np.linspace(0, len(int_c2), num=(2*nplateaus))])
                 lbounds =  np.concatenate([np.tile([0, -1], nplateaus), np.zeros(2*nplateaus)])
                 rbounds = np.concatenate([np.tile([1, 0], nplateaus), len(int_c2)*np.ones(2*nplateaus)])
-                # popt, _ = curve_fit(model, x, int_c2, maxfev=1000, p0=p0, bounds=(lbounds, rbounds), method='trf')
                 try:
                     popt, _ = curve_fit(model, x, int_c2, maxfev=5000, p0=p0, bounds=(lbounds, rbounds), method='trf')
                 except RuntimeError as e:
-                     popt = np.array(p0)
+                     popt = np.array(zeros_like(int_c2))
                 plt.figure()
                 plt.plot(x, int_c2, label='Data')
                 plt.plot(x, model(x, *popt), 'r-', label='Fit')
@@ -46,7 +45,8 @@ def fit_plateaus(tracks_props, first_trck, last_trck, nplateaus, steepness):
     tile_windows(300, 200)
     plt.show(block=False)
 
-# Plot filtered intensity profiles of C1-C2 track pairs
+
+# Plot C1-C2 track pairs intensity profiles (rolling median filtered)
 def  plot_tracks_intensity(tracks_props, tracks_c2_times, first_trck, last_trck, int_norm):
 
     # Radius of rolling median filter used for C2 track detection
@@ -76,11 +76,9 @@ def  plot_tracks_intensity(tracks_props, tracks_c2_times, first_trck, last_trck,
                 int_c1[:int_preframe], int_c1[-int_postframe:] = np.NaN, np.NaN
                 plt.plot(int_c1, color='red')
                 plt.plot(int_c2, linestyle=':', color='green')
-                #plt.plot(ctr_c2, linestyle=':', color='blue')
                 start, end, lgth = tracks_c2_times[key][0], tracks_c2_times[key][1], tracks_c2_times[key][2]
                 int_c2[1:start], int_c2[end:] = np.NaN, np.NaN
                 plt.plot(int_c2, color='green')
-                #plt.plot(ctr_c2, color='blue')
                 plt.grid()
                 xstart, ystart, fstart = track.iloc[0]['x'], track.iloc[0]['y'], track.iloc[0]['frame']
                 plt.title(f'C2 Track {cnt} (T: {int(fstart-1)}, Y: {int(ystart)}, X: {int(xstart)})')
@@ -89,16 +87,17 @@ def  plot_tracks_intensity(tracks_props, tracks_c2_times, first_trck, last_trck,
     plt.show(block=False)
 
 
-# Plot C1/C2 averaged intensity time profiles + std
+# Plot C1/C2 average intensity profiles
 def plot_tracks_avg_intensity(tracks_props, proteins, int_norm):
 
-    # C1 intensity profile is resampled to a fixed size vector arr_int_c1 (length rsplgth)
-    # C2 buffer is four times larger than C1 buffer to accomodate:
-    #   - pre-analysis (up to C1 duration by design since it cannot exceed min C1 duration)
-    #   - post-analysis (up to C1 duration for plotting)
-    #   - shift to align resampled intensity profiles due to pre-analysis (up to C1 duration by design)
-    rsplgth = 256
-    arr_int_c1 = np.full((int(1*rsplgth), len(tracks_props)), np.nan)
+    # C1 intensity profile is resampled to fixed size rsplgth
+    # C2 buffer is 4*rsplgth to accomodate:
+    #   - C2 intensity profile (resampled C1 length)
+    #   - pre-analysis (up to resampled C1 length)
+    #   - post-analysis (up to resampled C1 length)
+    #   - pre-analysis alignment (up to resampled C1 length)
+    rsplgth = 512
+    arr_int_c1 = np.full((int(rsplgth), len(tracks_props)), np.nan)
     arr_int_c2 = np.full((int(4*rsplgth), len(tracks_props)), np.nan)
     cnt, cnt2 = 0, 0
     for key, value in list(tracks_props.items())[:]:
@@ -144,6 +143,9 @@ def plot_tracks_avg_intensity(tracks_props, proteins, int_norm):
     avg_int_c1, avg_int_c2 = np.mean(arr_int_c1, axis=1), np.mean(arr_int_c2, axis=1)
     std_int_c1, std_int_c2 = np.std(arr_int_c1, axis=1), np.std(arr_int_c2, axis=1)
 
+    # Compute relative maxima shift
+    relmaxshft = (np.argmax(avg_int_c2)-np.argmax(avg_int_c1))/rsplgth-1
+
     # Plot
     fig = plt.figure()
     plt.plot(np.arange(0, 1, 1/rsplgth), avg_int_c1, color='red', label=proteins[0])
@@ -152,29 +154,33 @@ def plot_tracks_avg_intensity(tracks_props, proteins, int_norm):
     fig.gca().fill_between(np.arange(-1, 3, 1/rsplgth), avg_int_c2-std_int_c2, avg_int_c2+std_int_c2, color='green', alpha=0.2)
     plt.xlim(-mx_prefrc, 1+mx_postfrc)
     plt.legend()
-    plt.title('Average intensity profiles (N='+str(cnt)+')')
+    plt.title(f'Average intensity profiles (\u0394: {relmaxshft:.2f}, N='+str(cnt)+')')
     plt.show(block=False)
 
 
-# Plot proteins timelines (mean start/end + std)
+# Plot proteins timelines (start/end/length)
 def plot_tracks_timelines(data_list, proteins):
     cols = ['red', 'green', 'blue', 'orange', 'pink', 'cyan', 'yellow']
     n = len(data_list)
     figsize = (6,3*n)
     fig, ax = plt.subplots(1, 1, figsize=figsize, sharex=True)
+    combined = sorted(zip(proteins, data_list), key=lambda x: x[0])
+    proteins, data_list = zip(*combined)
     for i, data in enumerate(data_list):
-        # Compute average +std track start / end
         start = np.mean(data[0])
-        start_std = np.std(data[0])
         end = np.mean(data[1])
-        end_std = np.std(data[1])
         lgths = np.array(data[1])-np.array(data[0])
         if i==0:
             startref = start
             endref = end
-            text = f'{np.mean(lgths):.1f} +/- {np.std(lgths):.1f}'
-        if i>0:
-            text = f'{start-startref:.2f} +/- {start_std:.1f}\n{np.mean(lgths):.1f} +/- {np.std(lgths):.1f}\n{end-endref:.2f} +/- {end_std:.1f}'
+            lengthref = np.mean(lgths)
+        if 'exo84' in proteins[i]:
+            startref = start
+            endref = end
+            lengthref = np.mean(lgths)
+            text = f'{np.mean(lgths):.2f} \n (\u03C3: {np.std(lgths):.1f})'
+        else:
+            text = f'{np.mean(lgths):.2f} \u0394: {(start-endref)/lengthref:.2f} \n (\u03C3: {np.std(lgths):.1f})'
         # Plot timelines
         rectangle = Rectangle((start, n-1-i), end-start, 1, facecolor=cols[i%8], alpha=0.25, label=proteins[i]+f' (N = {len(data[0])})')
         ax.add_patch(rectangle)
@@ -190,6 +196,8 @@ def plot_tracks_timelines(data_list, proteins):
     plt.title('Track Timelines (s)')
     plt.show(block=False)
 
+
+# Export temperature grouped track analysis results to Trinity format
 def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
 
     print('---------------- Trinity Exporter ----------------')
@@ -296,7 +304,7 @@ def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
           steepness = {'widget_type': 'FloatSlider', 'min': 0.05, 'max': 1, 'tooltip': 'Steepness of the plateaus'},
           write_ignore_tracks={'widget_type': 'Checkbox', 'label': 'Update/Write ignore tracks', 'tooltip': 'Flag tracks to ignore in pkl file (Tracks IDs read from .txt file with same name as .pkl file)'})
 def curate_tracks(plot_intensity_profiles=True, plot_first_trck=1, plot_last_trck=25, model_C2_track=False,
-                  nplateaus=4, steepness=0.75, write_ignore_tracks=False):
+                  nplateaus=2, steepness=0.75, write_ignore_tracks=False):
 
     # Close all plots
     plt.close('all')
