@@ -2,6 +2,7 @@ import re
 import pickle
 import numpy as np
 import pandas as pd
+import platform, shutil, subprocess
 import warnings
 import matplotlib.pyplot as plt
 from scipy.signal import medfilt
@@ -197,6 +198,8 @@ def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
     pattern = r'-\d{1,2}C-'
     proteinref1 = proteins[0]
     proteinref2 = proteins[1]
+    proteinname1 = proteinref1.split('-')[-1]
+    proteinname2 = proteinref2.split('-')[-1]
     tempref_str1, tempref_str2 = '', ''
     for match in re.finditer(pattern, proteinref1):
         span = match.span()
@@ -271,10 +274,10 @@ def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
                     df_COLOCALIZED.at[0, temp_str1] = COLOCALIZED
 
         df_ALL_EXO.to_csv(exportpath+'temp_vs_track_S_XXX_ALL_EXOCYST_DURATION.csv', index=False, na_rep='')
-        df_ALL_C1.to_csv(exportpath+'temp_vs_track_S_XXX_ALL_C1_DURATION.csv', index=False, na_rep='')
-        df_ONLY_C1.to_csv(exportpath+'temp_vs_track_S_XXX_ONLY_C1_DURATION.csv', index=False, na_rep='')
-        df_ALL_C2.to_csv(exportpath+'temp_vs_track_S_XXX_ALL_C2_DURATION.csv', index=False, na_rep='')
-        df_ONLY_C2.to_csv(exportpath+'temp_vs_track_S_XXX_ONLY_C2_DURATION.csv', index=False, na_rep='')
+        df_ALL_C1.to_csv(exportpath+f'temp_vs_track_S_XXX_ALL_{proteinname1}_DURATION.csv', index=False, na_rep='')
+        df_ONLY_C1.to_csv(exportpath+f'temp_vs_track_S_XXX_ONLY_{proteinname1}_DURATION.csv', index=False, na_rep='')
+        df_ALL_C2.to_csv(exportpath+f'temp_vs_track_S_XXX_ALL_{proteinname2}_DURATION.csv', index=False, na_rep='')
+        df_ONLY_C2.to_csv(exportpath+f'temp_vs_track_S_XXX_ONLY_{proteinname2}_DURATION.csv', index=False, na_rep='')
         df_COLOCALIZED.to_csv(exportpath+'temp_vs_track_S_XXX_COLOCALIZED_DURATION.csv', index=False, na_rep='')
         print('Number of tracks exported for each temperature points:')
         print(df_ALL_EXO.count(axis=0))
@@ -291,9 +294,9 @@ def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
           model_C2_track={'widget_type': 'Checkbox', 'tooltip': 'Fit a dual plateau function to C2 intensity profiles'},
           nplateaus = {'widget_type': 'IntSlider', 'min': 1, 'max': 5, 'tooltip': 'Number of plateaus used for the function model'},
           steepness = {'widget_type': 'FloatSlider', 'min': 0.05, 'max': 1, 'tooltip': 'Steepness of the plateaus'},
-          write_ignore_tracks={'widget_type': 'Checkbox', 'tooltip': 'Flag tracks to ignore in pkl file (Tracks IDs read from .txt file with same name as .pkl file)'})
+          write_ignore_tracks={'widget_type': 'Checkbox', 'label': 'Update/Write ignore tracks', 'tooltip': 'Flag tracks to ignore in pkl file (Tracks IDs read from .txt file with same name as .pkl file)'})
 def curate_tracks(plot_intensity_profiles=True, plot_first_trck=1, plot_last_trck=25, model_C2_track=False,
-                  nplateaus=4, steepness=1, write_ignore_tracks=False):
+                  nplateaus=4, steepness=0.75, write_ignore_tracks=False):
 
     # Close all plots
     plt.close('all')
@@ -311,6 +314,16 @@ def curate_tracks(plot_intensity_profiles=True, plot_first_trck=1, plot_last_trc
         tracks_ignore_file = file_C1.replace('.pkl', '.txt')
         if path.exists(tracks_ignore_file):
             with open(tracks_ignore_file) as file:
+                # Open ignore file in text editor and wait for user to close it
+                if platform.system() == "Windows":
+                    subprocess.call(['notepad', tracks_ignore_file])
+                elif platform.system() == "Linux":
+                    if shutil.which("gedit"):
+                        subprocess.call(['gedit', tracks_ignore_file])
+                    elif shutil.which("kwrite"):
+                        subprocess.call(['kwrite', tracks_ignore_file])
+                elif platform.system() == "Darwin":
+                    subprocess.call(['textedit', tracks_ignore_file])
                 str_values = file.readline().strip().split(',')
                 tracks_ignore = [int(v.strip()) for v in str_values if v]
             print(f'Tracks to ignore: {tracks_ignore}')
@@ -347,26 +360,24 @@ def tracks_statistics(groupfiles=False, plot_average_intensity_profile=True, int
 
     # Results files: same names as input images but .pkl extension
     files_C1 = [str(load_images_tiff.imagepath.value).replace('.tif', '.pkl')]
-    files_C2 = [str(load_images_tiff.imagepath2.value).replace('.tif', '.pkl')]
 
     # Retrieve all results files in current C1/C2 image folder(s)
     if groupfiles:
         files_C1 = [str(f) for f in Path(files_C1[0]).parent.glob(f'*{".pkl"}') if f.is_file() and '_C1' in f.name]
-        files_C2 = [str(f) for f in Path(files_C2[0]).parent.glob(f'*{".pkl"}') if f.is_file() and '_C2' in f.name]
 
-    if path.exists(files_C1[0]) and path.exists(files_C2[0]):
+    if path.exists(files_C1[0]):
 
         # Display file information
         print('---------------- Tracks Statistics ----------------')
         print('File(s) analyzed: ')
         print([Path(file_C1).name for file_C1 in files_C1])
-        print([Path(file_C2).name for file_C2 in files_C2])
         # Aggregate content from pkl files to dictionaries
         tracks_props = {}
         tracks_c2_times = {}
-        for i, (file_C1, file_C2) in enumerate(zip(files_C1, files_C2)):
+        for i, file_C1 in enumerate(files_C1):
             with open(file_C1, 'rb') as file:
                 tracks_props.update({str(k) + '_'+str(i): v for k, v in pickle.load(file).items()})
+            file_C2 = file_C1.replace('_C1','_C2')
             with open(file_C2, 'rb') as file:
                 tracks_c2_times.update({str(k) + '_'+str(i): v for k, v in pickle.load(file).items()})
 
@@ -377,27 +388,30 @@ def tracks_statistics(groupfiles=False, plot_average_intensity_profile=True, int
             # Scan for all proteins present in pkl files of current image
             proteins1 = set()
             proteins2 = set()
-            for key, trck_times in tracks_c2_times.items():
-                if tracks_props[key]['ch2_positive'] == 1:
+            for key in tracks_props.keys():
+                if tracks_props[key]['ch2_positive'] == 1 and tracks_props[key]['ignore_track'] == 0:
                     proteins1.add(tracks_props[key]['protein1'])
                     proteins2.add(tracks_props[key]['protein2'])
             print(f'Analyzing timelines from proteins:')
             print(proteins1, proteins2)
 
             # Gather measurements
-            starts_c1, starts_c2, ends_c1, ends_c2, lgths_c1, lgths_c2 = [defaultdict(list) for _ in range(6)]
+            lgths_c1 = defaultdict(list)
+            starts_c2 = defaultdict(list)
+            ends_c2 = defaultdict(list)
+            lgths_c2 = defaultdict(list)
             cnt = 0
             for key, trck_times in tracks_c2_times.items():
                 if tracks_props[key]['ch2_positive'] == 1 and tracks_props[key]['ignore_track'] == 0:
                     ts = tracks_props[key]['frame_timestep']
                     lgths_c1[tracks_props[key]['protein1']].append(tracks_props[key]['length']*ts)
-                    starts_c2[tracks_props[key]['protein2']].append(
-                        (trck_times[0] - tracks_props[key]['int_preframe'])*ts)
+                    starts_c2[tracks_props[key]['protein2']].append((trck_times[0]-tracks_props[key]['int_preframe'])*ts)
                     ends_c2[tracks_props[key]['protein2']].append((trck_times[1]-tracks_props[key]['int_preframe'])*ts)
                     lgths_c2[tracks_props[key]['protein2']].append(trck_times[2]*ts)
                     cnt += 1
             data_list, proteins = [], []
             print(f'Number of C2 positive C1 tracks used for statistics: {cnt} ({len(tracks_c2_times.items())-cnt} ignored)')
+            
             for protein1 in proteins1:
                 if protein1 in lgths_c1:
                     #print(f'{protein1} mean track length: {np.mean(lgths_c1[protein1]):.2f} +/- {np.std(lgths_c1[protein1]):.2f} [range: {np.min(lgths_c1[protein1]):.2f} - {np.max(lgths_c1[protein1]):.2f}]')
