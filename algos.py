@@ -19,8 +19,8 @@ tp.quiet()
 
 ## TIFF images loader widget
 @magicgui(call_button='Load',
-          imagepath={'widget_type': 'FileEdit', 'label': 'channel 1', 'tooltip': 'Path to Channel 1 image'},
-          imagepath2={'widget_type': 'FileEdit', 'label': 'channel 2', 'tooltip': 'Path to Channel 2 image'},
+          imagepath={'widget_type': 'FileEdit', 'filter': '*.tif', 'label': 'channel 1', 'tooltip': 'Path to Channel 1 image'},
+          imagepath2={'widget_type': 'FileEdit', 'filter': '*.tif', 'label': 'channel 2', 'tooltip': 'Path to Channel 2 image'},
           proteins={'widget_type': 'LineEdit', 'tooltip': 'C1/C2 proteins [(strain-temp-protein),(strain-temp-protein)]'},
           time_step={'widget_type': 'FloatSpinBox', 'step': 0.001, 'tooltip': 'Frame duration (s)'},
           skipfirst={'widget_type': 'IntSlider', 'max': 50, 'tooltip': 'Do not load the first N frame(s)'},
