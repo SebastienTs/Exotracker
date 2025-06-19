@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import platform, shutil, subprocess
 import warnings
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from scipy.signal import medfilt
 from magicgui import magicgui
@@ -20,6 +21,7 @@ def fit_plateaus(tracks_props, first_trck, last_trck, nplateaus, steepness):
     medrad = analyze_tracks_int_gate.track_c2_int_medrad.value
 
     # Plot loop
+    mpl.rcParams['toolbar'] = 'None'
     cnt = 1
     for key, value in list(tracks_props.items())[:]:
         if tracks_props[key]['ch2_positive'] == 1:
@@ -53,6 +55,7 @@ def  plot_tracks_intensity(tracks_props, tracks_c2_times, first_trck, last_trck,
     medrad = analyze_tracks_int_gate.track_c2_int_medrad.value
 
     # Plot loop
+    mpl.rcParams['toolbar'] = 'None'
     cnt = 1
     for key, value in list(tracks_props.items())[:]:
         if tracks_props[key]['ch2_positive'] == 1:
@@ -99,6 +102,9 @@ def plot_tracks_avg_intensity(tracks_props, proteins, int_norm):
     rsplgth = 512
     arr_int_c1 = np.full((int(rsplgth), len(tracks_props)), np.nan)
     arr_int_c2 = np.full((int(4*rsplgth), len(tracks_props)), np.nan)
+
+    # Plot loop
+    mpl.rcParams['toolbar'] = 'toolbar2'
     cnt, cnt2 = 0, 0
     for key, value in list(tracks_props.items())[:]:
         if tracks_props[key]['protein1'] == proteins[0] and tracks_props[key]['protein2'] == proteins[1] and tracks_props[key]['ch2_positive'] == 1:
@@ -116,6 +122,9 @@ def plot_tracks_avg_intensity(tracks_props, proteins, int_norm):
                 if int_norm:
                     int_c1 = (int_c1-min(int_c1))/(max(int_c1)-min(int_c1))
                     int_c2 = (int_c2-min(int_c2))/(max(int_c2)-min(int_c2))
+                else:
+                    int_c1 = (int_c1-min(int_c1))
+                    int_c2 = (int_c2-min(int_c2))
                 # Resample intensity profiles so that C1 intensity profile has fixed length (rsplgth samples)
                 int_c1 = np.interp(np.linspace(0, 1, num=rsplgth), np.linspace(0, 1, num=c1_lgth), int_c1)
                 int_c2 = np.interp(np.linspace(0, 1, num=round(c2_lgth/c1_lgth*rsplgth)), np.linspace(0, 1, num=c2_lgth), int_c2)
@@ -149,12 +158,20 @@ def plot_tracks_avg_intensity(tracks_props, proteins, int_norm):
     # Plot
     fig = plt.figure()
     plt.plot(np.arange(0, 1, 1/rsplgth), avg_int_c1, color='red', label=proteins[0])
+    if int_norm:
+        fig.gca().fill_between(np.arange(0, 1, 1 / rsplgth), avg_int_c1 - std_int_c1, avg_int_c1 + std_int_c1, color='red', alpha=0.2)
     plt.plot(np.arange(-1, 3, 1/rsplgth), avg_int_c2, color='green', label=proteins[1])
-    fig.gca().fill_between(np.arange(0, 1, 1/rsplgth), avg_int_c1-std_int_c1, avg_int_c1+std_int_c1, color='red', alpha=0.2)
-    fig.gca().fill_between(np.arange(-1, 3, 1/rsplgth), avg_int_c2-std_int_c2, avg_int_c2+std_int_c2, color='green', alpha=0.2)
+    if int_norm:
+        fig.gca().fill_between(np.arange(-1, 3, 1/rsplgth), avg_int_c2-std_int_c2, avg_int_c2+std_int_c2, color='green', alpha=0.2)
+        plt.title(f'Average normalized tracks intensity (\u0394: {relmaxshft:.2f}, N=' + str(cnt) + ')')
+        plt.xlabel('C1 track normalized time')
+        plt.ylabel('AU')
+    else:
+        plt.title(f'Average tracks intensity (\u0394: {relmaxshft:.2f}, N=' + str(cnt) + ')')
+        plt.xlabel('C1 track normalized time')
+        plt.ylabel('Intensity (minimum subtracted)')
     plt.xlim(-mx_prefrc, 1+mx_postfrc)
     plt.legend()
-    plt.title(f'Average intensity profiles (\u0394: {relmaxshft:.2f}, N='+str(cnt)+')')
     plt.show(block=False)
 
 
@@ -166,6 +183,9 @@ def plot_tracks_timelines(data_list, proteins):
     fig, ax = plt.subplots(1, 1, figsize=figsize, sharex=True)
     combined = sorted(zip(proteins, data_list), key=lambda x: x[0])
     proteins, data_list = zip(*combined)
+
+    # Plot loop
+    mpl.rcParams['toolbar'] = 'toolbar2'
     for i, data in enumerate(data_list):
         start = np.mean(data[0])
         end = np.mean(data[1])
@@ -178,9 +198,9 @@ def plot_tracks_timelines(data_list, proteins):
             startref = start
             endref = end
             lengthref = np.mean(lgths)
-            text = f'{np.mean(lgths):.2f} \n (\u03C3: {np.std(lgths):.1f})'
+            text = f'L1 = {np.mean(lgths):.2f} +/- {np.std(lgths):.1f}'
         else:
-            text = f'{np.mean(lgths):.2f} \u0394: {(start-endref)/lengthref:.2f} \n (\u03C3: {np.std(lgths):.1f})'
+            text = f'|--->  {(start-startref)/lengthref:+.2f} L1 \n\n L2 = {np.mean(lgths):.2f} +/- {np.std(lgths):.1f} \n\n {(end-endref)/lengthref:+.2f} L1  <---|'
         # Plot timelines
         rectangle = Rectangle((start, n-1-i), end-start, 1, facecolor=cols[i%8], alpha=0.25, label=proteins[i]+f' (N = {len(data[0])})')
         ax.add_patch(rectangle)
@@ -193,7 +213,7 @@ def plot_tracks_timelines(data_list, proteins):
     plt.ylim(0, n)
     ax.yaxis.set_visible(False)
     plt.legend()
-    plt.title('Track Timelines (s)')
+    plt.title('Tracks Timeline')
     plt.show(block=False)
 
 
@@ -300,7 +320,7 @@ def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
           plot_first_trck={'widget_type': 'IntSlider', 'min': 1, 'max': 250, 'tooltip': 'First C2+ track to plot', 'label': ' '},
           plot_last_trck={'widget_type': 'IntSlider', 'min': 1, 'max': 250, 'tooltip': 'Last C2+ track to plot', 'label': ' '},
           model_C2_track={'widget_type': 'Checkbox', 'tooltip': 'Fit a dual plateau function to C2 intensity profiles'},
-          nplateaus = {'widget_type': 'IntSlider', 'min': 1, 'max': 5, 'tooltip': 'Number of plateaus used for the function model'},
+          nplateaus = {'widget_type': 'IntSlider', 'min': 1, 'max': 5, 'tooltip': 'Number of plateaus used for the function model', 'label': 'Nb. plateaus'},
           steepness = {'widget_type': 'FloatSlider', 'min': 0.05, 'max': 1, 'tooltip': 'Steepness of the plateaus'},
           write_ignore_tracks={'widget_type': 'Checkbox', 'label': 'Update/Write ignore tracks', 'tooltip': 'Flag tracks to ignore in pkl file (Tracks IDs read from .txt file with same name as .pkl file)'})
 def curate_tracks(plot_intensity_profiles=True, plot_first_trck=1, plot_last_trck=25, model_C2_track=False,
@@ -355,10 +375,10 @@ def curate_tracks(plot_intensity_profiles=True, plot_first_trck=1, plot_last_trc
 
 @magicgui(call_button='Process',
           groupfiles={'widget_type': 'Checkbox', 'tooltip': 'Process all files from current image folder(s)'},
-          plot_average_intensity_profile={'widget_type': 'Checkbox', 'tooltip': 'Plot average intensity profiles for current protein conditions (magenta)'},
+          plot_average_intensity_profile={'widget_type': 'Checkbox', 'tooltip': 'Plot average intensity profiles for current protein conditions'},
           intnorm={'widget_type': 'Checkbox', 'tooltip': 'Normalize intensity'},
           plot_timelines={'widget_type': 'Checkbox', 'tooltip': 'Plot track timelines and compute statistics'},
-          export_to_trinity={'widget_type': 'Checkbox', 'tooltip': 'Export to Trinity all available temperatures for current protein conditions (magenta)'})
+          export_to_trinity={'widget_type': 'Checkbox', 'tooltip': 'Export to Trinity all available temperatures for current protein conditions'})
 def tracks_statistics(groupfiles=False, plot_average_intensity_profile=True, intnorm=True, plot_timelines=False, export_to_trinity=False):
 
     # Proteins of the current dataset

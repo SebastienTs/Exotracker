@@ -100,6 +100,8 @@ def detect_spots_msdog(vw: Viewer, spot_rad=2, detect_thr=0.3) -> LayerDataTuple
         spot_avg_frame = np.round(10*len(blb_lst)/img.shape[0])/10
         print(f'Detected {len(blb_lst)} spots ({spot_avg_frame}/frame)')
         detect_spots_msdog.call_button.text = f'{len(blb_lst)} Spots ({spot_avg_frame}/frame)'
+        plt.xlabel('Frame')
+        plt.ylabel('Count')
         plt.title('Frame blob detection count')
         plt.show(block=False)
 

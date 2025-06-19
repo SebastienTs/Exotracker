@@ -28,7 +28,6 @@ def disk_pts(rad):
         pts.append([0, y, x])
   return pts
 
-
 # Compute min/mean/max intensity within disks (at coordinates pts)
 def disk_int_stats(img, pts, rad):
   rad = np.round(rad).astype(int)
@@ -165,7 +164,7 @@ def tile_windows(wdth, hght):
     for i, num in enumerate(figs):
         plt.figure(num)
         mngr = plt.get_current_fig_manager()
-        mngr.window.setGeometry(i % cols * wdth,50 + i // cols * round(hght * 1.1), wdth, hght)
+        mngr.window.setGeometry(i%cols*wdth,50+i//cols*round(hght*1.16), wdth, hght)
 
 
 #### C2 Tracks modeling
