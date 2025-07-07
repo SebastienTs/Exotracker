@@ -177,7 +177,7 @@ def plot_tracks_avg_intensity(tracks_props, proteins, int_norm):
 
 # Plot proteins timelines (start/end/length)
 def plot_tracks_timelines(data_list, proteins):
-    cols = ['red', 'green', 'blue', 'orange', 'pink', 'cyan', 'yellow']
+    cols = ['red', 'green', 'blue', 'orange', 'pink', 'cyan', 'yellow', 'gray']
     n = len(data_list)
     figsize = (6,3*n)
     fig, ax = plt.subplots(1, 1, figsize=figsize, sharex=True)
@@ -200,14 +200,14 @@ def plot_tracks_timelines(data_list, proteins):
             lengthref = np.mean(lgths)
             text = f'L1 = {np.mean(lgths):.2f} +/- {np.std(lgths):.1f}'
         else:
-            text = f'|--->  {(start-startref)/lengthref:+.2f} L1 \n\n L2 = {np.mean(lgths):.2f} +/- {np.std(lgths):.1f} \n\n {(end-endref)/lengthref:+.2f} L1  <---|'
+            text = f'|--->  {(start-startref)/lengthref:+.2f} L1 \n L2 = {np.mean(lgths):.2f} +/- {np.std(lgths):.1f} \n {(end-endref)/lengthref:+.2f} L1  <---|'
         # Plot timelines
         rectangle = Rectangle((start, n-1-i), end-start, 1, facecolor=cols[i%8], alpha=0.25, label=proteins[i]+f' (N = {len(data[0])})')
         ax.add_patch(rectangle)
         rx, ry = rectangle.get_xy()
         cx = rx + rectangle.get_width()/2
         cy = ry + rectangle.get_height()/2
-        ax.annotate(text, (cx, cy), color='black', weight='bold', fontsize=12, ha='center', va='center')
+        ax.annotate(text, (cx, cy), color='black', weight='bold', fontsize=8, ha='center', va='center')
         ax.plot()
     plt.xlabel('Time (s)')
     plt.ylim(0, n)
