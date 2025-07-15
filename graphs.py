@@ -236,10 +236,11 @@ def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
         span = match.span()
         tempref_str2 = proteinref2[span[0]+1:span[1]-2]
 
-    # Check protein C1 and C2 temperature match
+    # Check that temperature for proteins C1 and C2 match
     if tempref_str1 and tempref_str2 and tempref_str1 == tempref_str2:
 
         df_ALL_EXO,  df_ALL_C1, df_ONLY_C1, df_ALL_C2, df_ONLY_C2, df_COLOCALIZED = [pd.DataFrame() for _ in range(6)]
+
         for key, trck_times in tracks_c2_times.items():
 
             # Extract protein1 and protein2 temperatures
@@ -256,12 +257,13 @@ def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
             if (protein1.replace(temp_str1, tempref_str1) == proteinref1 and protein2.replace(temp_str2, tempref_str2) == proteinref2
                     and tracks_props[key]['ch2_positive'] == 1 and tracks_props[key]['ignore_track'] == 0):
 
+                ts = tracks_props[key]['frame_timestep']
                 start_c1 = 0
-                lgth_c1 = tracks_props[key]['length']
-                end_c1 = tracks_props[key]['length']
-                start_c2 = (trck_times[0]-tracks_props[key]['int_preframe'])
-                end_c2 = (trck_times[1]-tracks_props[key]['int_preframe'])
-                lgth_c2 = trck_times[2]
+                lgth_c1 = tracks_props[key]['length']*ts
+                end_c1 = tracks_props[key]['length']*ts
+                start_c2 = (trck_times[0]-tracks_props[key]['int_preframe'])*ts
+                end_c2 = (trck_times[1]-tracks_props[key]['int_preframe'])*ts
+                lgth_c2 = trck_times[2]*ts
 
                 ALL_EXO = max(end_c1, end_c2) - min(start_c1, start_c2)
                 ALL_C1 = lgth_c1
@@ -301,6 +303,15 @@ def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
                 else:
                     df_COLOCALIZED.at[0, temp_str1] = COLOCALIZED
 
+        # Reorder the columns of the tables in ascending temperature order
+        df_ALL_EXO = df_ALL_EXO.iloc[:, np.argsort(df_ALL_EXO.columns.tolist())]
+        df_ALL_C1 = df_ALL_C1.iloc[:, np.argsort(df_ALL_C1.columns.tolist())]
+        df_ONLY_C1 = df_ONLY_C1.iloc[:, np.argsort(df_ONLY_C1.columns.tolist())]
+        df_ALL_C2 = df_ALL_C2.iloc[:, np.argsort(df_ALL_C2.columns.tolist())]
+        df_ONLY_C2 = df_ONLY_C2.iloc[:, np.argsort(df_ONLY_C2.columns.tolist())]
+        df_COLOCALIZED = df_COLOCALIZED.iloc[:, np.argsort(df_COLOCALIZED.columns.tolist())]
+
+        # Save the tables to CSV files
         df_ALL_EXO.to_csv(exportpath+'temp_vs_track_S_XXX_ALL_EXOCYST_DURATION.csv', index=False, na_rep='')
         df_ALL_C1.to_csv(exportpath+f'temp_vs_track_S_XXX_ALL_{proteinname1}_DURATION.csv', index=False, na_rep='')
         df_ONLY_C1.to_csv(exportpath+f'temp_vs_track_S_XXX_ONLY_{proteinname1}_DURATION.csv', index=False, na_rep='')
@@ -312,7 +323,7 @@ def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
         tracks_statistics.call_button.text = f'{df_ALL_EXO.count().sum()} Tracks exported'
 
     else:
-        print('Temperatures of C1 and C2 proteins do not match!')
+        print('Temperatures of proteins from channels C1 and C2 do not match!')
 
 
 @magicgui(call_button='Process',
