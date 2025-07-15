@@ -254,9 +254,11 @@ def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
                 span = match.span()
                 temp_str2 = protein2[span[0]+1:span[1]-2]
 
+            # Ensure proteins from both channels have matching temperatures
             if (protein1.replace(temp_str1, tempref_str1) == proteinref1 and protein2.replace(temp_str2, tempref_str2) == proteinref2
                     and tracks_props[key]['ch2_positive'] == 1 and tracks_props[key]['ignore_track'] == 0):
 
+                # Extract C1 and C2 tracks information
                 ts = tracks_props[key]['frame_timestep']
                 start_c1 = 0
                 lgth_c1 = tracks_props[key]['length']*ts
@@ -265,10 +267,11 @@ def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
                 end_c2 = (trck_times[1]-tracks_props[key]['int_preframe'])*ts
                 lgth_c2 = trck_times[2]*ts
 
+                # Estimate the durations of all C1-C2 track combinations
                 ALL_EXO = max(end_c1, end_c2) - min(start_c1, start_c2)
                 ALL_C1 = lgth_c1
                 ALL_C2 = lgth_c2
-                # Assuming C2 is late, that is start after C1 and end after
+                # Assuming C2 is late, that is it starts after C1 and end after it too
                 ONLY_C1 = max(min(start_c2-start_c1, lgth_c1), 0)
                 ONLY_C2 = max(min(end_c2-end_c1, lgth_c2), 0)
                 COLOCALIZED = ALL_EXO-ONLY_C1-ONLY_C2
