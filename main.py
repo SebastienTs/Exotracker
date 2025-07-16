@@ -1,6 +1,5 @@
 import napari
 import warnings
-from algos import *
 from graphs import *
 warnings.filterwarnings("ignore", category=FutureWarning)
 
