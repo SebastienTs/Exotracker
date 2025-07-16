@@ -12,6 +12,7 @@ from pathlib import Path
 from collections import defaultdict
 from os import path, makedirs
 from algos import *
+from settings import mx_prefrc, mx_postfrc
 warnings.filterwarnings("ignore")
 
 ## Fit a linear combination of logistic functions to C2 intensity profiles
@@ -36,7 +37,7 @@ def fit_plateaus(tracks_props, first_trck, last_trck, nplateaus, steepness):
                 rbounds = np.concatenate([np.tile([1, 0], nplateaus), len(int_c2)*np.ones(2*nplateaus)])
                 try:
                     popt, _ = curve_fit(model, x, int_c2, maxfev=5000, p0=p0, bounds=(lbounds, rbounds), method='trf')
-                except RuntimeError as e:
+                except RuntimeError:
                      popt = np.array(zeros_like(int_c2))
                 plt.figure()
                 plt.plot(x, int_c2, label='Data')
@@ -91,7 +92,7 @@ def  plot_tracks_intensity(tracks_props, tracks_c2_times, first_trck, last_trck,
 
 
 # Plot C1/C2 average intensity profiles
-def plot_tracks_avg_intensity(tracks_props, proteins, int_norm):
+def plot_tracks_avg_intensity(tracks_props, exp_proteins, int_norm):
 
     # C1 intensity profile is resampled to fixed size rsplgth
     # C2 buffer is 4*rsplgth to accomodate:
@@ -107,7 +108,7 @@ def plot_tracks_avg_intensity(tracks_props, proteins, int_norm):
     mpl.rcParams['toolbar'] = 'toolbar2'
     cnt, cnt2 = 0, 0
     for key, value in list(tracks_props.items())[:]:
-        if tracks_props[key]['protein1'] == proteins[0] and tracks_props[key]['protein2'] == proteins[1] and tracks_props[key]['ch2_positive'] == 1:
+        if tracks_props[key]['protein1'] == exp_proteins[0] and tracks_props[key]['protein2'] == exp_proteins[1] and tracks_props[key]['ch2_positive'] == 1:
             if tracks_props[key]['ignore_track'] == 0:
                 int_preframe = tracks_props[key]['int_preframe']
                 # Load C1 and C2 intensity profiles
@@ -157,10 +158,10 @@ def plot_tracks_avg_intensity(tracks_props, proteins, int_norm):
 
     # Plot
     fig = plt.figure()
-    plt.plot(np.arange(0, 1, 1/rsplgth), avg_int_c1, color='red', label=proteins[0])
+    plt.plot(np.arange(0, 1, 1/rsplgth), avg_int_c1, color='red', label=exp_proteins[0])
     if int_norm:
         fig.gca().fill_between(np.arange(0, 1, 1 / rsplgth), avg_int_c1 - std_int_c1, avg_int_c1 + std_int_c1, color='red', alpha=0.2)
-    plt.plot(np.arange(-1, 3, 1/rsplgth), avg_int_c2, color='green', label=proteins[1])
+    plt.plot(np.arange(-1, 3, 1/rsplgth), avg_int_c2, color='green', label=exp_proteins[1])
     if int_norm:
         fig.gca().fill_between(np.arange(-1, 3, 1/rsplgth), avg_int_c2-std_int_c2, avg_int_c2+std_int_c2, color='green', alpha=0.2)
         plt.title(f'Average normalized tracks intensity (\u0394: {relmaxshft:.2f}, N=' + str(cnt) + ')')
@@ -176,13 +177,13 @@ def plot_tracks_avg_intensity(tracks_props, proteins, int_norm):
 
 
 # Plot proteins timelines (start/end/length)
-def plot_tracks_timelines(data_list, proteins):
+def plot_tracks_timelines(data_list, exp_proteins, std_and_delta, time_norm_c1):
     cols = ['red', 'green', 'blue', 'orange', 'pink', 'cyan', 'yellow', 'gray']
     n = len(data_list)
     figsize = (6,3*n)
     fig, ax = plt.subplots(1, 1, figsize=figsize, sharex=True)
-    combined = sorted(zip(proteins, data_list), key=lambda x: x[0])
-    proteins, data_list = zip(*combined)
+    combined = sorted(zip(exp_proteins, data_list), key=lambda x: x[0])
+    exp_proteins, data_list = zip(*combined)
 
     # Plot loop
     mpl.rcParams['toolbar'] = 'toolbar2'
@@ -190,24 +191,37 @@ def plot_tracks_timelines(data_list, proteins):
         start = np.mean(data[0])
         end = np.mean(data[1])
         lgths = np.array(data[1])-np.array(data[0])
-        if i==0:
+        if 'exo84' in exp_proteins[i]:
+            if time_norm_c1:
+                start = 0
+                end = 1
             startref = start
             endref = end
             lengthref = np.mean(lgths)
-        if 'exo84' in proteins[i]:
-            startref = start
-            endref = end
-            lengthref = np.mean(lgths)
-            text = f'L1 = {np.mean(lgths):.2f} +/- {np.std(lgths):.1f}'
+            if std_and_delta:
+                text = f'{np.mean(lgths):.1f} \n \u0394={100*np.std(lgths)/np.mean(lgths):.0f}%'
+            else:
+                text = f'{np.mean(lgths):.1f}'
+            height = 1
         else:
-            text = f'|--->  {(start-startref)/lengthref:+.2f} L1 \n L2 = {np.mean(lgths):.2f} +/- {np.std(lgths):.1f} \n {(end-endref)/lengthref:+.2f} L1  <---|'
+            if time_norm_c1:
+                start = start/lengthref
+                end = end/lengthref
+            if std_and_delta:
+                if time_norm_c1:
+                    text = f'{np.mean(lgths):.1f} \n {(start-startref):+.2f}, \u0394={100 * np.std(lgths)/np.mean(lgths):.0f}%, {(end-endref):+.2f}'
+                else:
+                    text = f'{np.mean(lgths):.1f} \n {(start-startref)/lengthref:+.2f}, \u0394={100*np.std(lgths)/np.mean(lgths):.0f}%, {(end-endref)/lengthref:+.2f}'
+            else:
+                text = f'{np.mean(lgths):.1f}'
+            height = 0.75
         # Plot timelines
-        rectangle = Rectangle((start, n-1-i), end-start, 1, facecolor=cols[i%8], alpha=0.25, label=proteins[i]+f' (N = {len(data[0])})')
+        rectangle = Rectangle((start, n-1-i+1-height), end-start, height, facecolor=cols[i%8], alpha=0.25, label=exp_proteins[i] + f' (N = {len(data[0])}')
         ax.add_patch(rectangle)
         rx, ry = rectangle.get_xy()
         cx = rx + rectangle.get_width()/2
         cy = ry + rectangle.get_height()/2
-        ax.annotate(text, (cx, cy), color='black', weight='bold', fontsize=8, ha='center', va='center')
+        ax.annotate(text, (cx, cy), color='black', weight='bold', fontsize=12, ha='center', va='center')
         ax.plot()
     plt.xlabel('Time (s)')
     plt.ylim(0, n)
@@ -218,17 +232,17 @@ def plot_tracks_timelines(data_list, proteins):
 
 
 # Export temperature grouped track analysis results to Trinity format
-def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
+def trinity_exporter(tracks_props, tracks_c2_times, exportpath, exp_proteins):
 
     print('---------------- Trinity Exporter ----------------')
 
     # Identify temperatures of proteins of interest (magenta field)
-    pattern = r'-\d{1,2}C-'
-    proteinref1 = proteins[0]
-    proteinref2 = proteins[1]
+    proteinref1 = exp_proteins[0]
+    proteinref2 = exp_proteins[1]
     proteinname1 = proteinref1.split('-')[-1]
     proteinname2 = proteinref2.split('-')[-1]
     tempref_str1, tempref_str2 = '', ''
+    pattern = r'-\d{1,2}C-'
     for match in re.finditer(pattern, proteinref1):
         span = match.span()
         tempref_str1 = proteinref1[span[0]+1:span[1]-2]
@@ -239,7 +253,8 @@ def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
     # Check that temperature for proteins C1 and C2 match
     if tempref_str1 and tempref_str2 and tempref_str1 == tempref_str2:
 
-        df_ALL_EXO,  df_ALL_C1, df_ONLY_C1, df_ALL_C2, df_ONLY_C2, df_COLOCALIZED = [pd.DataFrame() for _ in range(6)]
+        # Create dataframes to store results
+        df_all_exo,  df_all_c1, df_only_c1, df_all_c2, df_only_c2, df_colocalized = [pd.DataFrame() for _ in range(6)]
 
         for key, trck_times in tracks_c2_times.items():
 
@@ -247,6 +262,7 @@ def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
             protein1 = tracks_props[key]['protein1']
             protein2 = tracks_props[key]['protein2']
             temp_str1 , temp_str2 = '', ''
+            pattern = r'-\d{1,2}C-'
             for match in re.finditer(pattern, protein1):
                 span = match.span()
                 temp_str1 = protein1[span[0]+1:span[1]-2]
@@ -254,107 +270,118 @@ def trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins):
                 span = match.span()
                 temp_str2 = protein2[span[0]+1:span[1]-2]
 
-            # Ensure proteins from both channels have matching temperatures
+            # Ensure valid temperatures were found and proteins have matching temperatures for both channels
             if (protein1.replace(temp_str1, tempref_str1) == proteinref1 and protein2.replace(temp_str2, tempref_str2) == proteinref2
                     and tracks_props[key]['ch2_positive'] == 1 and tracks_props[key]['ignore_track'] == 0):
 
                 # Extract C1 and C2 tracks information
-                ts = tracks_props[key]['frame_timestep']
                 start_c1 = 0
-                lgth_c1 = tracks_props[key]['length']*ts
-                end_c1 = tracks_props[key]['length']*ts
-                start_c2 = (trck_times[0]-tracks_props[key]['int_preframe'])*ts
-                end_c2 = (trck_times[1]-tracks_props[key]['int_preframe'])*ts
-                lgth_c2 = trck_times[2]*ts
+                lgth_c1 = tracks_props[key]['length']*tracks_props[key]['frame_timestep']
+                end_c1 = tracks_props[key]['length']*tracks_props[key]['frame_timestep']
+                start_c2 = (trck_times[0]-tracks_props[key]['int_preframe'])*tracks_props[key]['frame_timestep']
+                end_c2 = (trck_times[1]-tracks_props[key]['int_preframe'])*tracks_props[key]['frame_timestep']
+                lgth_c2 = trck_times[2]*tracks_props[key]['frame_timestep']
 
-                # Estimate the durations of all C1-C2 track combinations
-                ALL_EXO = max(end_c1, end_c2) - min(start_c1, start_c2)
-                ALL_C1 = lgth_c1
-                ALL_C2 = lgth_c2
+                # Duration of all exocytosis (at least C1 or C2 protein)
+                all_exo = max(end_c1, end_c2)-min(start_c1, start_c2)
+
+                # Duration of C1 and C2 proteins
+                all_c1 = lgth_c1
+                all_c2 = lgth_c2
+
+                # C1 and C2 overlap (colocalized)
+                colocalized = max(0, min(end_c1, end_c2)-max(start_c1, start_c2))
+
                 # Assuming C2 is late, that is it starts after C1 and end after it too
-                ONLY_C1 = max(min(start_c2-start_c1, lgth_c1), 0)
-                ONLY_C2 = max(min(end_c2-end_c1, lgth_c2), 0)
-                COLOCALIZED = ALL_EXO-ONLY_C1-ONLY_C2
-                if temp_str1 in df_ALL_EXO.columns:
-                    last_idx = df_ALL_EXO[temp_str1].last_valid_index()
-                    df_ALL_EXO.at[last_idx+1, temp_str1] = ALL_EXO
-                else:
-                    df_ALL_EXO.at[0, temp_str1] = ALL_EXO
-                if temp_str1 in df_ALL_C1.columns:
-                    last_idx = df_ALL_C1[temp_str1].last_valid_index()
-                    df_ALL_C1.at[last_idx+1, temp_str1] = ALL_C1
-                else:
-                    df_ALL_C1.at[0, temp_str1] = ALL_C1
-                if temp_str1 in df_ONLY_C1.columns:
-                    last_idx = df_ONLY_C1[temp_str1].last_valid_index()
-                    df_ONLY_C1.at[last_idx+1, temp_str1] = ONLY_C1
-                else:
-                    df_ONLY_C1.at[0, temp_str1] = ONLY_C1
-                if temp_str1 in df_ALL_C2.columns:
-                    last_idx = df_ALL_C2[temp_str1].last_valid_index()
-                    df_ALL_C2.at[last_idx+1, temp_str1] = ALL_C2
-                else:
-                    df_ALL_C2.at[0, temp_str1] = ALL_C2
-                if temp_str1 in df_ONLY_C2.columns:
-                    last_idx = df_ONLY_C2[temp_str1].last_valid_index()
-                    df_ONLY_C2.at[last_idx + 1, temp_str1] = ONLY_C2
-                else:
-                    df_ONLY_C2.at[0, temp_str1] = ONLY_C2
-                if temp_str1 in df_COLOCALIZED.columns:
-                    last_idx = df_COLOCALIZED[temp_str1].last_valid_index()
-                    df_COLOCALIZED.at[last_idx + 1, temp_str1] = COLOCALIZED
-                else:
-                    df_COLOCALIZED.at[0, temp_str1] = COLOCALIZED
+                only_c1 = lgth_c1-colocalized
+                only_c2 = lgth_c2-colocalized
 
-        # Reorder the columns of the tables in ascending temperature order
-        df_ALL_EXO = df_ALL_EXO.iloc[:, np.argsort(df_ALL_EXO.columns.tolist())]
-        df_ALL_C1 = df_ALL_C1.iloc[:, np.argsort(df_ALL_C1.columns.tolist())]
-        df_ONLY_C1 = df_ONLY_C1.iloc[:, np.argsort(df_ONLY_C1.columns.tolist())]
-        df_ALL_C2 = df_ALL_C2.iloc[:, np.argsort(df_ALL_C2.columns.tolist())]
-        df_ONLY_C2 = df_ONLY_C2.iloc[:, np.argsort(df_ONLY_C2.columns.tolist())]
-        df_COLOCALIZED = df_COLOCALIZED.iloc[:, np.argsort(df_COLOCALIZED.columns.tolist())]
+                # Append results to dataframes
+                if temp_str1 in df_all_exo.columns:
+                    last_idx = df_all_exo[temp_str1].last_valid_index()
+                    df_all_exo.at[last_idx+1, temp_str1] = all_exo
+                else:
+                    df_all_exo.at[0, temp_str1] = all_exo
+                if temp_str1 in df_all_c1.columns:
+                    last_idx = df_all_c1[temp_str1].last_valid_index()
+                    df_all_c1.at[last_idx+1, temp_str1] = all_c1
+                else:
+                    df_all_c1.at[0, temp_str1] = all_c1
+                if temp_str1 in df_only_c1.columns:
+                    last_idx = df_only_c1[temp_str1].last_valid_index()
+                    df_only_c1.at[last_idx+1, temp_str1] = only_c1
+                else:
+                    df_only_c1.at[0, temp_str1] = only_c1
+                if temp_str1 in df_all_c2.columns:
+                    last_idx = df_all_c2[temp_str1].last_valid_index()
+                    df_all_c2.at[last_idx+1, temp_str1] = all_c2
+                else:
+                    df_all_c2.at[0, temp_str1] = all_c2
+                if temp_str1 in df_only_c2.columns:
+                    last_idx = df_only_c2[temp_str1].last_valid_index()
+                    df_only_c2.at[last_idx + 1, temp_str1] = only_c2
+                else:
+                    df_only_c2.at[0, temp_str1] = only_c2
+                if temp_str1 in df_colocalized.columns:
+                    last_idx = df_colocalized[temp_str1].last_valid_index()
+                    df_colocalized.at[last_idx + 1, temp_str1] = colocalized
+                else:
+                    df_colocalized.at[0, temp_str1] = colocalized
 
-        # Save the tables to CSV files
-        df_ALL_EXO.to_csv(exportpath+'temp_vs_track_S_XXX_ALL_EXOCYST_DURATION.csv', index=False, na_rep='')
-        df_ALL_C1.to_csv(exportpath+f'temp_vs_track_S_XXX_ALL_{proteinname1}_DURATION.csv', index=False, na_rep='')
-        df_ONLY_C1.to_csv(exportpath+f'temp_vs_track_S_XXX_ONLY_{proteinname1}_DURATION.csv', index=False, na_rep='')
-        df_ALL_C2.to_csv(exportpath+f'temp_vs_track_S_XXX_ALL_{proteinname2}_DURATION.csv', index=False, na_rep='')
-        df_ONLY_C2.to_csv(exportpath+f'temp_vs_track_S_XXX_ONLY_{proteinname2}_DURATION.csv', index=False, na_rep='')
-        df_COLOCALIZED.to_csv(exportpath+'temp_vs_track_S_XXX_COLOCALIZED_DURATION.csv', index=False, na_rep='')
+        # Reorder the columns of the dataframe in ascending temperature order
+        df_all_exo = df_all_exo.iloc[:, np.argsort(df_all_exo.columns.tolist())]
+        df_all_c1 = df_all_c1.iloc[:, np.argsort(df_all_c1.columns.tolist())]
+        df_only_c1 = df_only_c1.iloc[:, np.argsort(df_only_c1.columns.tolist())]
+        df_all_c2 = df_all_c2.iloc[:, np.argsort(df_all_c2.columns.tolist())]
+        df_only_c2 = df_only_c2.iloc[:, np.argsort(df_only_c2.columns.tolist())]
+        df_colocalized = df_colocalized.iloc[:, np.argsort(df_colocalized.columns.tolist())]
+
+        # Save the dataframes as CSV files
+        df_all_exo.to_csv(exportpath+'temp_vs_track_S_XXX_ALL_EXOCYST_DURATION.csv', index=False, na_rep='')
+        df_all_c1.to_csv(exportpath+f'temp_vs_track_S_XXX_ALL_{proteinname1}_DURATION.csv', index=False, na_rep='')
+        df_only_c1.to_csv(exportpath+f'temp_vs_track_S_XXX_ONLY_{proteinname1}_DURATION.csv', index=False, na_rep='')
+        df_all_c2.to_csv(exportpath+f'temp_vs_track_S_XXX_ALL_{proteinname2}_DURATION.csv', index=False, na_rep='')
+        df_only_c2.to_csv(exportpath+f'temp_vs_track_S_XXX_ONLY_{proteinname2}_DURATION.csv', index=False, na_rep='')
+        df_colocalized.to_csv(exportpath+'temp_vs_track_S_XXX_COLOCALIZED_DURATION.csv', index=False, na_rep='')
         print('Number of tracks exported for each temperature points:')
-        print(df_ALL_EXO.count(axis=0))
-        tracks_statistics.call_button.text = f'{df_ALL_EXO.count().sum()} Tracks exported'
+        print(df_all_exo.count(axis=0))
+        tracks_statistics.call_button.text = f'{df_all_exo.count().sum()} Tracks exported'
 
     else:
-        print('Temperatures of proteins from channels C1 and C2 do not match!')
+        print('Incorrect temperatures or temperatures not matching for both channels, skipping this condition!')
 
 
 @magicgui(call_button='Process',
           plot_intensity_profiles={'widget_type': 'Checkbox', 'tooltip': 'Plot C1/C2 intensity profiles (median filtered)'},
           plot_first_trck={'widget_type': 'IntSlider', 'min': 1, 'max': 250, 'tooltip': 'First C2+ track to plot', 'label': ' '},
           plot_last_trck={'widget_type': 'IntSlider', 'min': 1, 'max': 250, 'tooltip': 'Last C2+ track to plot', 'label': ' '},
-          model_C2_track={'widget_type': 'Checkbox', 'tooltip': 'Fit a dual plateau function to C2 intensity profiles'},
+          model_c2_track={'widget_type': 'Checkbox', 'tooltip': 'Fit a dual plateau function to C2 intensity profiles'},
           nplateaus = {'widget_type': 'IntSlider', 'min': 1, 'max': 5, 'tooltip': 'Number of plateaus used for the function model', 'label': 'Nb. plateaus'},
           steepness = {'widget_type': 'FloatSlider', 'min': 0.05, 'max': 1, 'tooltip': 'Steepness of the plateaus'},
           write_ignore_tracks={'widget_type': 'Checkbox', 'label': 'Update/Write ignore tracks', 'tooltip': 'Flag tracks to ignore in pkl file (Tracks IDs read from .txt file with same name as .pkl file)'})
-def curate_tracks(plot_intensity_profiles=True, plot_first_trck=1, plot_last_trck=25, model_C2_track=False,
+def curate_tracks(plot_intensity_profiles=True, plot_first_trck=1, plot_last_trck=25, model_c2_track=False,
                   nplateaus=2, steepness=0.75, write_ignore_tracks=False):
 
     # Close all plots
     plt.close('all')
 
     # Load pkl files from current C1/C2 images
-    file_C1 = str(load_images_tiff.imagepath.value).replace('.tif', '.pkl')
-    file_C2 = str(load_images_tiff.imagepath2.value).replace('.tif', '.pkl')
-    with open(file_C1, 'rb') as file:
-        tracks_props = pickle.load(file)
-    with open(file_C2, 'rb') as file:
-        tracks_c2_times = pickle.load(file)
+    file_c1 = str(load_images_tiff.imagepath.value).replace('.tif', '.pkl')
+    file_c2 = str(load_images_tiff.imagepath2.value).replace('.tif', '.pkl')
 
-    # Write ignore track flags from ignore_tracks.txt to C1 pkl file
-    if write_ignore_tracks:
-        tracks_ignore_file = file_C1.replace('.pkl', '.txt')
-        if path.exists(tracks_ignore_file):
+    if path.exists(file_c1) and path.exists(file_c2):
+        with open(file_c1, 'rb') as file:
+            tracks_props = pickle.load(file)
+        with open(file_c2, 'rb') as file:
+            tracks_c2_times = pickle.load(file)
+
+        # Write ignore track flags from ignore_tracks.txt to C1 pkl file
+        if write_ignore_tracks:
+            tracks_ignore_file = file_c1.replace('.pkl', '.txt')
+            # Create an empty file if ignore file doesn't exist
+            if not path.exists(tracks_ignore_file):
+                with open(tracks_ignore_file, "w"):
+                    pass
             with open(tracks_ignore_file) as file:
                 # Open ignore file in text editor and wait for user to close it
                 if platform.system() == "Windows":
@@ -374,57 +401,73 @@ def curate_tracks(plot_intensity_profiles=True, plot_first_trck=1, plot_last_trc
                 if tracks_props[key]['ch2_positive'] == 1:
                     if cnt in tracks_ignore:
                         tracks_props[key]['ignore_track'] = 1
-                        print(f'Tracks {cnt} set to ignore in pkl file {file_C1}')
+                        print(f'Tracks {cnt} set to ignore in pkl file {file_c1}')
                     else:
                         tracks_props[key]['ignore_track'] = 0
                     cnt += 1
-            with open(file_C1, 'wb') as file:
+            with open(file_c1, 'wb') as file:
                 pickle.dump(tracks_props, file)
 
-    if plot_intensity_profiles:
-        plot_tracks_intensity(tracks_props, tracks_c2_times, first_trck=plot_first_trck, last_trck=plot_last_trck, int_norm=False)
-    if model_C2_track:
-        fit_plateaus(tracks_props, first_trck=plot_first_trck, last_trck=plot_last_trck, nplateaus=nplateaus, steepness=steepness)
+        if plot_intensity_profiles:
+            plot_tracks_intensity(tracks_props, tracks_c2_times, first_trck=plot_first_trck,
+                                  last_trck=plot_last_trck, int_norm=False)
+        if model_c2_track:
+            fit_plateaus(tracks_props, first_trck=plot_first_trck, last_trck=plot_last_trck, nplateaus=nplateaus,
+                         steepness=steepness)
+    else:
+        print('The results files (.pkl) do not exist for the selected images!')
 
 
 @magicgui(call_button='Process',
-          groupfiles={'widget_type': 'Checkbox', 'tooltip': 'Process all files from current image folder(s)'},
+          groupfiles={'widget_type': 'Checkbox', 'tooltip': 'Process all files from C1/C2 images folder(s)'},
           plot_average_intensity_profile={'widget_type': 'Checkbox', 'tooltip': 'Plot average intensity profiles for current protein conditions'},
           intnorm={'widget_type': 'Checkbox', 'tooltip': 'Normalize intensity'},
           plot_timelines={'widget_type': 'Checkbox', 'tooltip': 'Plot track timelines and compute statistics'},
+          std_and_delta={'widget_type': 'Checkbox', 'tooltip': 'Display standard deviation and C1/C2 start/end relative delays'},
+          time_norm_c1={'widget_type': 'Checkbox', 'tooltip': 'Normalize all C1 durations'},
           export_to_trinity={'widget_type': 'Checkbox', 'tooltip': 'Export to Trinity all available temperatures for current protein conditions'})
-def tracks_statistics(groupfiles=False, plot_average_intensity_profile=True, intnorm=True, plot_timelines=False, export_to_trinity=False):
+def tracks_statistics(groupfiles=False, plot_average_intensity_profile=True, intnorm=True, plot_timelines=False,
+                      std_and_delta=False, time_norm_c1=False, export_to_trinity=False):
 
     # Proteins of the current dataset
     proteins_str = load_images_tiff.proteins.value
     stripped = proteins_str[1:-1].replace("'", "")
-    proteins = [x.strip() for x in stripped.split(',')]
+    exp_proteins = [x.strip() for x in stripped.split(',')]
 
     # Results files: same names as input images but .pkl extension
-    files_C1 = [str(load_images_tiff.imagepath.value).replace('.tif', '.pkl')]
+    files_c1 = [str(load_images_tiff.imagepath.value).replace('.tif', '.pkl')]
 
     # Retrieve all results files in current C1/C2 image folder(s)
     if groupfiles:
-        files_C1 = [str(f) for f in Path(files_C1[0]).parent.glob(f'*{".pkl"}') if f.is_file() and '_C1' in f.name]
+        files_c1 = [str(f) for f in Path(files_c1[0]).parent.glob(f'*{".pkl"}') if f.is_file() and '_C1' in f.name]
 
-    if path.exists(files_C1[0]):
+    if path.exists(files_c1[0]):
 
         # Display file information
         print('---------------- Tracks Statistics ----------------')
         print('File(s) analyzed: ')
-        print([Path(file_C1).name for file_C1 in files_C1])
+        print([Path(file_C1).name for file_C1 in files_c1])
+
         # Aggregate content from pkl files to dictionaries
         tracks_props = {}
         tracks_c2_times = {}
-        for i, file_C1 in enumerate(files_C1):
+        for i, file_C1 in enumerate(files_c1):
             with open(file_C1, 'rb') as file:
                 tracks_props.update({str(k) + '_'+str(i): v for k, v in pickle.load(file).items()})
-            file_C2 = file_C1.replace('_C1','_C2')
-            with open(file_C2, 'rb') as file:
+            file_c2 = file_C1.replace('_C1','_C2')
+            with open(file_c2, 'rb') as file:
                 tracks_c2_times.update({str(k) + '_'+str(i): v for k, v in pickle.load(file).items()})
 
         if plot_average_intensity_profile:
-            plot_tracks_avg_intensity(tracks_props, proteins=proteins, int_norm = intnorm)
+            plot_tracks_avg_intensity(tracks_props, exp_proteins=exp_proteins, int_norm = intnorm)
+
+        if export_to_trinity:
+            exportpath = path.dirname(load_images_tiff.imagepath.value)+'/Trinity/'
+            if not path.exists(exportpath):
+                makedirs(exportpath)
+            trinity_exporter(tracks_props, tracks_c2_times, exportpath, exp_proteins=exp_proteins)
+        else:
+            tracks_statistics.call_button.text = 'Process'
 
         if plot_timelines:
             # Scan for all proteins present in pkl files of current image
@@ -451,30 +494,22 @@ def tracks_statistics(groupfiles=False, plot_average_intensity_profile=True, int
                     ends_c2[tracks_props[key]['protein2']].append((trck_times[1]-tracks_props[key]['int_preframe'])*ts)
                     lgths_c2[tracks_props[key]['protein2']].append(trck_times[2]*ts)
                     cnt += 1
-            data_list, proteins = [], []
+            data_list, exp_proteins = [], []
             print(f'Number of C2 positive C1 tracks used for statistics: {cnt} ({len(tracks_c2_times.items())-cnt} ignored)')
             
             for protein1 in proteins1:
                 if protein1 in lgths_c1:
                     #print(f'{protein1} mean track length: {np.mean(lgths_c1[protein1]):.2f} +/- {np.std(lgths_c1[protein1]):.2f} [range: {np.min(lgths_c1[protein1]):.2f} - {np.max(lgths_c1[protein1]):.2f}]')
                     data_list.append([np.zeros_like(lgths_c1[protein1]), lgths_c1[protein1]])
-                    proteins.append(protein1)
+                    exp_proteins.append(protein1)
             for protein2 in proteins2:
                 if protein2 in lgths_c2:
                     #print(f'{protein2} mean track length: {np.mean(lgths_c2[protein2]):.2f} +/- {np.std(lgths_c2[protein2]):.2f} [range: {np.min(lgths_c2[protein2]):.2f} - {np.max(lgths_c2[protein2]):.2f}]')
                     data_list.append([starts_c2[protein2], ends_c2[protein2]])
-                    proteins.append(protein2)
+                    exp_proteins.append(protein2)
 
             # Call plotting function
-            plot_tracks_timelines(data_list, proteins=proteins)
-
-        if export_to_trinity:
-            exportpath = path.dirname(load_images_tiff.imagepath.value)+'/Trinity/'
-            if not path.exists(exportpath):
-                makedirs(exportpath)
-            trinity_exporter(tracks_props, tracks_c2_times, exportpath, proteins=proteins)
-        else:
-            tracks_statistics.call_button.text = 'Process'
+            plot_tracks_timelines(data_list, exp_proteins=exp_proteins, std_and_delta=std_and_delta, time_norm_c1=time_norm_c1)
 
     else:
-        print('No file to process!')
+        print('The results files (.pkl) do not exist for the selected images!')

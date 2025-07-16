@@ -14,7 +14,6 @@ from matplotlib.patches import Rectangle
 from itertools import groupby
 import ctypes
 import math
-from settings import filename, filename2, frame_timestep, proteins, skipfirst, skiplast, mx_prefrc, mx_postfrc
 
 #### Helper functions (intensity measurement)
 

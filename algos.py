@@ -11,7 +11,8 @@ import trackpy as tp
 import pandas as pd
 import numpy as np
 import pickle
-from settings import color_codes
+from settings import (color_codes, filename_c1_default, filename_c2_default, frame_timestep_default,
+                      proteins_default, skipfirst_default, skiplast_default)
 from utils import *
 tp.quiet()
 
@@ -25,13 +26,14 @@ tp.quiet()
           time_step={'widget_type': 'FloatSpinBox', 'step': 0.001, 'tooltip': 'Frame duration (s)'},
           skipfirst={'widget_type': 'IntSlider', 'max': 50, 'tooltip': 'Do not load the first N frame(s)'},
           skiplast={'widget_type': 'IntSlider', 'max': 50, 'tooltip': 'Do not load the last N frame(s)'})
-def load_images_tiff(vw:Viewer, imagepath=filename, imagepath2=filename2, proteins=proteins, time_step=frame_timestep,
-                     skipfirst=skipfirst, skiplast=skiplast):
+def load_images_tiff(vw:Viewer, imagepath=filename_c1_default, imagepath2=filename_c2_default, proteins=proteins_default,
+                     time_step=frame_timestep_default, skipfirst=skipfirst_default, skiplast=skiplast_default):
 
     # Reset viewer and close all layers
     vw.reset()
     vw.layers.clear()
 
+    # Load C1 and C2 images and add them to viewer
     if path.isfile(imagepath) and str(imagepath).endswith('.tif') and path.isfile(imagepath2) and str(imagepath2).endswith('.tif'):
 
         with TiffFile(imagepath) as tif:
@@ -143,7 +145,7 @@ def track_spots_trackpy(vw: Viewer, spot_search_range=2, max_gap=10, min_duratio
         # Filter tracks
         trajectories_flt = pd.DataFrame(columns=trajectories.columns)
         tracks_total, tracks_kept = 0, 0
-        for id, df in trajectories.groupby('particle'):
+        for track_id, df in trajectories.groupby('particle'):
             df = df.sort_values(by=['frame'])
             duration = df['frame'].iloc[-1]-df['frame'].iloc[0]+1
             length = np.sqrt(df['x'].diff()**2+df['y'].diff()**2).sum()
@@ -174,7 +176,7 @@ def track_spots_trackpy(vw: Viewer, spot_search_range=2, max_gap=10, min_duratio
 
 ## Parametric Filter + C2 Intensity Gating
 
-@magicgui(call_button='Analyze and Save Tracks',
+@magicgui(call_button='Analyze Tracks and Save Results (.pkl files)',
           min_startframe={'widget_type': 'IntSlider', 'max': 100, 'tooltip': 'Minimum start frame (C2 pre-analysis)'},
           min_afterframe={'widget_type': 'IntSlider', 'max': 100, 'tooltip': 'Maximum track end before last frame (C2 post-analysis)'},
           min_neighbor_dist={'widget_type': 'IntSlider', 'max': 10, 'tooltip': 'Minimum distance to any valid track (pixels)'},
@@ -210,8 +212,6 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=75, mi
       trajectories = trajectories.groupby('particle', as_index=False).apply(interpolate_track)
 
       # Flag closeby tracks
-      cx = trajectories.groupby('particle', as_index=False)['x'].mean()
-      cy = trajectories.groupby('particle', as_index=False)['y'].mean()
       dst_flags = flag_min_dist(trajectories, min_neighbor_dist)
 
       # Filter tracks
@@ -261,7 +261,7 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=75, mi
           for i, df in tracks_kept.groupby('particle', as_index=False):
 
             # Extend track for C1/C2 pre- and post- intensity analysis (at first/last particle location)
-            lgth_C1 = len(df)
+            lgth_c1 = len(df)
             df = df.reset_index(drop=True)
             df = extend_dataframe_frames_post(df, min_afterframe)
             df = extend_dataframe_frames_pre(df, min_startframe)
@@ -305,16 +305,16 @@ def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=75, mi
                     cnt_endcrop += 1
 
                 # Color-code C1 blobs according to C2 positiveness
-                lgth_negative = min(max(start-min_startframe, 0), lgth_C1)
+                lgth_negative = min(max(start-min_startframe, 0), lgth_c1)
                 colors = np.concatenate((colors, np.ones(lgth_negative, dtype=int)))
-                lgth_positive = max(min(trcklgth, lgth_C1-lgth_negative), 0)
+                lgth_positive = max(min(trcklgth, lgth_c1-lgth_negative), 0)
                 colors = np.concatenate((colors, 2*np.ones(lgth_positive, dtype=int)))
-                lgth_remaining = max(lgth_C1-lgth_negative-lgth_positive, 0)
+                lgth_remaining = max(lgth_c1-lgth_negative-lgth_positive, 0)
                 colors = np.concatenate((colors, np.ones(lgth_remaining, dtype=int)))
 
                 cnt_positive += 1
             else:
-                colors = np.concatenate((colors, np.zeros(lgth_C1, dtype=int)))
+                colors = np.concatenate((colors, np.zeros(lgth_c1, dtype=int)))
 
           border_colors = [color_codes[color] for color in colors]
 
