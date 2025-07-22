@@ -29,17 +29,20 @@ tp.quiet()
 def load_images_tiff(vw:Viewer, imagepath=filename_c1_default, imagepath2=filename_c2_default, proteins=proteins_default,
                      time_step=frame_timestep_default, skipfirst=skipfirst_default, skiplast=skiplast_default):
 
-    # Reset viewer and close all layers
-    vw.reset()
-    vw.layers.clear()
+    # Close all non image layers
+    for layer in list(vw.layers):
+        if not isinstance(layer, Image):
+            vw.layers.remove(layer)
 
     # Load C1 and C2 images and add them to viewer
-    if path.isfile(imagepath) and str(imagepath).endswith('.tif') and path.isfile(imagepath2) and str(imagepath2).endswith('.tif'):
+    if path.isfile(imagepath) and str(imagepath).endswith('.tif'):
 
+        # Load C1 image
         with TiffFile(imagepath) as tif:
             num_pages = len(tif.pages)
             img = imread(imagepath, key=range(min(skipfirst, num_pages-1), max(1, num_pages-skiplast))).astype(np.uint16)
 
+        # Load C2 image and add layer
         if path.isfile(imagepath2) and str(imagepath2).endswith('.tif'):
             img2 = imread(imagepath2, key=range(min(skipfirst, num_pages-1), max(1, num_pages-skiplast))).astype(np.uint16)
             if viewer_is_layer(vw, 'Channel2'):
@@ -50,12 +53,18 @@ def load_images_tiff(vw:Viewer, imagepath=filename_c1_default, imagepath2=filena
         else:
             print("C2 File doesn't exist or isn't a TIFF file")
 
-        vw.add_image(img, name='Channel1')
+        # Add C1 layer
+        if viewer_is_layer(vw, 'Channel1'):
+            vw.layers['Channel1'].data = img
+        else:
+            vw.add_image(img, name='Channel1')
         print(f'Loaded image {imagepath} ({img.shape})')
+
+        vw.reset_view()
 
     else:
 
-        print("Error: The files don't exist or aren't TIFF files")
+        print("C1 File doesn't exist or isn't a TIFF file")
 
     return None
 
@@ -186,7 +195,7 @@ def track_spots_trackpy(vw: Viewer, spot_search_range=2, max_gap=10, min_duratio
           track_c2_int_thr={'widget_type': 'FloatSlider', 'min': 0.25, 'max': 0.5, 'step': 0.01, 'tooltip': 'C2 track detection intensity threshold (normalized)'},
           c2_mode={'widget_type': "Select", "choices": ["longest", "highest"], 'label': 'C2 track detection mode','tooltip': 'Burst selection method (early croped burst ignored if multiple bursts found)'},)
 def analyze_tracks_int_gate(vw: Viewer, min_startframe=25, min_afterframe=75, min_neighbor_dist=4, min_c1_contrast=0.26,
-                            min_c2_contrast_delta=0.16, track_c2_int_medrad=4, track_c2_int_thr=0.35, c2_mode='longest') -> LayerDataTuple:
+                            min_c2_contrast_delta=0.15, track_c2_int_medrad=4, track_c2_int_thr=0.35, c2_mode='longest') -> LayerDataTuple:
 
   if min_startframe > track_spots_trackpy.min_duration.value:
       analyze_tracks_int_gate.min_startframe.value = track_spots_trackpy.min_duration.value
