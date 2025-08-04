@@ -3,8 +3,8 @@ A napari based application to track exocitosis events in yeast cells and perform
 
 The input dataset should be provided as a set of two TIFF time-lapses with these string specifiers:
 
-- _C1: exo84 fluorescent label (or equivalent exocyst constitutive protein)
-- _C2: fluorescent label for a target protein of interest potentially co-localizing with C1 protein
+- **_C1**: exo84 fluorescent label (or equivalent exocyst constitutive protein)
+- **_C2**: fluorescent label for a target protein of interest potentially co-localizing with C1 protein
 
 These time-lapses are finely registered, bleaching + background corrected, and possibly slightly noise filtered as an independent pre-processing step.  
 
@@ -30,7 +30,7 @@ Results format
 
 The results are exported as two picke (.pkl) files in the same folder as the input images (and with same names)
 
-C1 pkl file
+**C1 pickle file**
 
 Each track is an entry (track id) of a dictionnary of dictionnaries with following entries:
 'protein1': String combining C1 protein and sample/experimental conditions
@@ -45,7 +45,7 @@ Each track is an entry (track id) of a dictionnary of dictionnaries with followi
 'ch1_ext_int': extended intensity profile (vector, length L+int_preframe+int_postframe)
 'ch2_ext_int': extended intensity profile (vector, length L+int_preframe+int_postframe)
 
-C2 pkl file
+**C2 pickle file**
 
 C2 tracks are not estimated by a particle tracker as C1 tracks but from a gating algorithm applied to the extended intensity profiles 'ch2_ext_int' extracted at the locations of C1 tracks.
 
